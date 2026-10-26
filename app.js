@@ -23,7 +23,10 @@ const providers={
   mapbox:{label:'Mapbox Uydu',url:'mapbox://mapbox.satellite',tileSize:256},
   maptiler:{label:'MapTiler Uydu',url:()=> 'https://api.maptiler.com/tiles/satellite/tiles.json?key='+encodeURIComponent(getProviderKey('maptiler'))}
 };
-function getProviderKey(name){return localStorage.getItem('atlas3d_'+name+'_key')||''}
+let sharedMaptilerKey='';
+async function loadSharedConfig(){try{const response=await fetch('/api/config',{cache:'no-store'});if(!response.ok)throw Error('HTTP '+response.status);const data=await response.json();sharedMaptilerKey=data.maptilerKey||''}catch(e){console.warn('Shared configuration unavailable:',e)}}
+const configReady=loadSharedConfig();
+function getProviderKey(name){return name==='maptiler'?sharedMaptilerKey:(localStorage.getItem('atlas3d_'+name+'_key')||'')}
 function askProviderKey(name,label){let key=getProviderKey(name);if(!key){key=prompt(label+' API anahtarını girin (tarayıcıda saklanır):')?.trim()||'';if(key)localStorage.setItem('atlas3d_'+name+'_key',key)}return key}
 const select=document.createElement('select');select.id='imagery-provider';select.setAttribute('aria-label','Harita görüntü sağlayıcısı');select.style.cssText='width:110px;background:#14283b;color:white;border:1px solid #ffffff66;border-radius:12px;padding:10px 5px;font-size:12px;cursor:pointer';
 for(const [id,p] of Object.entries(providers)){const o=document.createElement('option');o.value=id;o.textContent=p.label;select.appendChild(o)}
@@ -34,8 +37,8 @@ let activeProvider='topo';
 function clearImagery(){if(map.getLayer('atlas-imagery-layer'))map.removeLayer('atlas-imagery-layer');if(map.getSource('atlas-imagery'))map.removeSource('atlas-imagery')}
 function setImagery(id){if(id==='google'){const key=askProviderKey('google','Google Maps Platform Map Tiles API');if(!key){select.value=activeProvider;return}notify('Google Photorealistic 3D ayrı bir CesiumJS görüntüleyicisi gerektirir; bu sürümde henüz etkin değildir.',8000);select.value=activeProvider;return}
 const p=providers[id];if(!p)return;
-if(id==='maptiler'&&!askProviderKey('maptiler','MapTiler Satellite')){select.value=activeProvider;return}
+if(id==='maptiler'&&!sharedMaptilerKey){notify('MapTiler yapılandırması yüklenemedi. Cloudflare Worker dağıtımını kontrol edin.',8000);select.value=activeProvider;return}
 clearImagery();
 if(id!=='topo'){const src={type:'raster',tileSize:p.tileSize||256};if(p.tiles)src.tiles=p.tiles;if(p.url)src.url=typeof p.url==='function'?p.url():p.url;if(p.attribution)src.attribution=p.attribution;map.addSource('atlas-imagery',src);const first=map.getStyle().layers.find(l=>l.type==='symbol');map.addLayer({id:'atlas-imagery-layer',type:'raster',source:'atlas-imagery',paint:{'raster-opacity':1}},first?.id)}
 activeProvider=id;select.value=id;notify(id==='topo'?'Topoğrafik harita etkin.':p.label+' görüntüsü yükleniyor…',4500)}
-select.onchange=()=>{try{setImagery(select.value)}catch(e){console.error(e);notify('Katman eklenemedi: '+e.message,8000);select.value=activeProvider}};
+select.onchange=async()=>{await configReady;try{setImagery(select.value)}catch(e){console.error(e);notify('Katman eklenemedi: '+e.message,8000);select.value=activeProvider}};

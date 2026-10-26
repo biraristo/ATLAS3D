@@ -1,0 +1,44 @@
+name: ATLAS3D Live Smoke Test
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate JavaScript and site files
+        run: |
+          node --check app.js
+          node --check worker.js
+          test -s index.html
+          test -s style.css
+          test -s wrangler.toml
+
+      - name: Check the publicly deployed app
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://atlas3d.bunyaminatalay07.workers.dev"
+          for attempt in {1..12}; do
+            if curl --fail --location --silent --show-error --max-time 15 "$base/api/health" -o /tmp/atlas-health.json; then
+              if node -e 'const h=require("/tmp/atlas-health.json"); if(h.status!=="ok")process.exit(1)'; then
+                break
+              fi
+            fi
+            if [ "$attempt" -eq 12 ]; then echo "Health endpoint failed"; exit 1; fi
+            sleep 10
+          done
+          curl --fail --location --silent --show-error --max-time 20 "$base/" -o /tmp/atlas-index.html
+          grep -q "ATLAS3D" /tmp/atlas-index.html
+          curl --fail --location --silent --show-error --max-time 20 "$base/app.js" -o /tmp/atlas-app.js
+          grep -q "maplibregl" /tmp/atlas-app.js
+          node --check /tmp/atlas-app.js
+          echo "ATLAS3D live HTTP smoke test passed."

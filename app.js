@@ -16,6 +16,26 @@ function setFollowing(v){following=v;$('follow').classList.toggle('active',v);if
 $('follow').onclick=()=>watchId===null?startLocation(true):setFollowing(!following);
 $('locate').onclick=()=>startLocation(true);
 function startLocation(follow){if(!navigator.geolocation){notify('Bu cihazda konum servisi bulunamadı.',0);return}if(!window.isSecureContext){notify('GPS için HTTPS gerekli.',0);return}if(watchId!==null){setFollowing(follow);return}setFollowing(follow);$('gps').textContent='GPS aranıyor';watchId=navigator.geolocation.watchPosition(pos=>{const {latitude,longitude,accuracy,heading}=pos.coords;lastPosition=[longitude,latitude];$('gps').textContent='GPS aktif ±'+Math.round(accuracy)+' m';$('status').textContent='Canlı konum';if(!marker)marker=new mapboxgl.Marker({color:'#45b6ff'}).setLngLat(lastPosition).addTo(map);else marker.setLngLat(lastPosition);if(following)map.easeTo({center:lastPosition,zoom:Math.max(map.getZoom(),14.5),pitch:72,...(Number.isFinite(heading)?{bearing:heading}:{}),duration:700});updateTerrain()},err=>{$('gps').textContent='GPS kullanılamıyor';notify('Konum alınamadı: '+err.message,0);watchId=null;setFollowing(false)},{enableHighAccuracy:true,maximumAge:2000,timeout:15000})}
-// Uydu katmanı isteğe bağlıdır; başarısız olursa temel harita kullanılabilir.
-const satelliteBtn=document.createElement('button');satelliteBtn.textContent='Uydu';satelliteBtn.title='Uydu görünümünü aç/kapat';satelliteBtn.setAttribute('aria-label','Uydu görünümünü aç/kapat');document.querySelector('.controls').prepend(satelliteBtn);let satelliteOn=false;
-satelliteBtn.onclick=()=>{satelliteOn=!satelliteOn;satelliteBtn.classList.toggle('active',satelliteOn);if(satelliteOn){if(!map.getSource('atlas-satellite'))map.addSource('atlas-satellite',{type:'raster',url:'mapbox://mapbox.satellite',tileSize:256});if(!map.getLayer('atlas-satellite-layer')){const first=map.getStyle().layers.find(l=>l.type==='symbol');map.addLayer({id:'atlas-satellite-layer',type:'raster',source:'atlas-satellite',paint:{'raster-opacity':1}},first?.id)}notify('Uydu katmanı açıldı. 429 hatası devam ederse temel haritaya dönün.')}else{if(map.getLayer('atlas-satellite-layer'))map.removeLayer('atlas-satellite-layer');notify('Temel arazi haritasına dönüldü.')}};
+
+const providers={
+  topo:{label:'Topoğrafik'},
+  esri:{label:'Esri Uydu',tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],attribution:'Tiles © Esri — Sources: Esri, Maxar, Earthstar Geographics, and the GIS User Community'},
+  mapbox:{label:'Mapbox Uydu',url:'mapbox://mapbox.satellite',tileSize:256},
+  maptiler:{label:'MapTiler Uydu',url:()=> 'https://api.maptiler.com/tiles/satellite/tiles.json?key='+encodeURIComponent(getProviderKey('maptiler'))}
+};
+function getProviderKey(name){return localStorage.getItem('atlas3d_'+name+'_key')||''}
+function askProviderKey(name,label){let key=getProviderKey(name);if(!key){key=prompt(label+' API anahtarını girin (tarayıcıda saklanır):')?.trim()||'';if(key)localStorage.setItem('atlas3d_'+name+'_key',key)}return key}
+const select=document.createElement('select');select.id='imagery-provider';select.setAttribute('aria-label','Harita görüntü sağlayıcısı');select.style.cssText='width:110px;background:#14283b;color:white;border:1px solid #ffffff66;border-radius:12px;padding:10px 5px;font-size:12px;cursor:pointer';
+for(const [id,p] of Object.entries(providers)){const o=document.createElement('option');o.value=id;o.textContent=p.label;select.appendChild(o)}
+const googleOption=document.createElement('option');googleOption.value='google';googleOption.textContent='Google 3D (kurulum)';select.appendChild(googleOption);
+const control=document.querySelector('.controls');control.prepend(select);
+const oldButton=control.querySelector('button');if(oldButton&&oldButton.textContent==='Uydu')oldButton.remove();
+let activeProvider='topo';
+function clearImagery(){if(map.getLayer('atlas-imagery-layer'))map.removeLayer('atlas-imagery-layer');if(map.getSource('atlas-imagery'))map.removeSource('atlas-imagery')}
+function setImagery(id){if(id==='google'){const key=askProviderKey('google','Google Maps Platform Map Tiles API');if(!key){select.value=activeProvider;return}notify('Google Photorealistic 3D ayrı bir CesiumJS görüntüleyicisi gerektirir; bu sürümde henüz etkin değildir.',8000);select.value=activeProvider;return}
+const p=providers[id];if(!p)return;
+if(id==='maptiler'&&!askProviderKey('maptiler','MapTiler Satellite')){select.value=activeProvider;return}
+clearImagery();
+if(id!=='topo'){const src={type:'raster',tileSize:p.tileSize||256};if(p.tiles)src.tiles=p.tiles;if(p.url)src.url=typeof p.url==='function'?p.url():p.url;if(p.attribution)src.attribution=p.attribution;map.addSource('atlas-imagery',src);const first=map.getStyle().layers.find(l=>l.type==='symbol');map.addLayer({id:'atlas-imagery-layer',type:'raster',source:'atlas-imagery',paint:{'raster-opacity':1}},first?.id)}
+activeProvider=id;select.value=id;notify(id==='topo'?'Topoğrafik harita etkin.':p.label+' görüntüsü yükleniyor…',4500)}
+select.onchange=()=>{try{setImagery(select.value)}catch(e){console.error(e);notify('Katman eklenemedi: '+e.message,8000);select.value=activeProvider}};

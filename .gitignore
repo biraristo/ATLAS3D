@@ -1,0 +1,5 @@
+# Local Cloudflare Wrangler caches and temporary files
+.wrangler/
+node_modules/
+.DS_Store
+*.log

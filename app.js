@@ -36,7 +36,7 @@ const oldButton=control.querySelector('button');if(oldButton&&oldButton.textCont
 let activeProvider='topo';
 function clearImagery(){if(map.getLayer('atlas-imagery-layer'))map.removeLayer('atlas-imagery-layer');if(map.getSource('atlas-imagery'))map.removeSource('atlas-imagery')}
 let googleViewer=null,googleTileset=null;
-async function enableGoogle3D(){await configReady;if(!sharedGoogleKey){notify('Google 3D için Cloudflare GOOGLE_MAPS_API_KEY değişkenini ekleyin.',9000);select.value=activeProvider;return}
+async function enableGoogle3D(){await configReady;if(!sharedGoogleKey){await loadSharedConfig()}if(!sharedGoogleKey){notify('Google 3D anahtarı çalışan Cloudflare Worker yapılandırmasında bulunamadı. ATLAS3D → Settings → Variables and Secrets bölümünde GOOGLE_MAPS_API_KEY değişkeninin Production ortamında olduğunu ve son dağıtımın tamamlandığını kontrol edin.',12000);select.value=activeProvider;return}
 if(!window.Cesium){notify('CesiumJS yüklenemedi. İnternet bağlantısını kontrol edin.',9000);select.value=activeProvider;return}
 const container=$('google-3d');container.hidden=false;document.body.classList.add('google-mode');
 try{if(!googleViewer){googleViewer=new Cesium.Viewer(container,{globe:false,baseLayer:false,animation:false,timeline:false,geocoder:false,homeButton:false,sceneModePicker:false,navigationHelpButton:false,infoBox:false,selectionIndicator:false,fullscreenButton:false,baseLayerPicker:false});googleViewer.scene.globe.show=false;googleViewer.scene.skyAtmosphere.show=false;googleTileset=await Cesium.createGooglePhotorealistic3DTileset(sharedGoogleKey);googleViewer.scene.primitives.add(googleTileset)}

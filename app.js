@@ -36,7 +36,7 @@ const oldButton=control.querySelector('button');if(oldButton&&oldButton.textCont
 let activeProvider='topo';
 function clearImagery(){if(map.getLayer('atlas-imagery-layer'))map.removeLayer('atlas-imagery-layer');if(map.getSource('atlas-imagery'))map.removeSource('atlas-imagery')}
 let googleViewer=null,googleTileset=null;
-async function enableGoogle3D(){await configReady;if(!sharedGoogleKey){await loadSharedConfig()}if(!sharedGoogleKey){notify('Google 3D anahtarı çalışan Cloudflare Worker yapılandırmasında bulunamadı. ATLAS3D → Settings → Variables and Secrets bölümünde GOOGLE_MAPS_API_KEY değişkeninin Production ortamında olduğunu ve son dağıtımın tamamlandığını kontrol edin.',12000);select.value=activeProvider;return}
+async function enableGoogle3D(){await configReady;if(!sharedGoogleKey){await loadSharedConfig()}if(!sharedGoogleKey){notify('Google 3D için çalışma ortamı anahtarı eksik. Cloudflare → atlas3d → Settings → Variables and Secrets alanına GOOGLE_MAPS_API_KEY ekleyin. Settings → Build bölümündeki değişkenler uygulamaya aktarılmaz.',12000);select.value=activeProvider;return}
 if(!window.Cesium){notify('CesiumJS yüklenemedi. İnternet bağlantısını kontrol edin.',9000);select.value=activeProvider;return}
 const container=$('google-3d');container.hidden=false;document.body.classList.add('google-mode');
 try{if(!googleViewer){googleViewer=new Cesium.Viewer(container,{globe:false,baseLayer:false,animation:false,timeline:false,geocoder:false,homeButton:false,sceneModePicker:false,navigationHelpButton:false,infoBox:false,selectionIndicator:false,fullscreenButton:false,baseLayerPicker:false});googleViewer.scene.globe.show=false;googleViewer.scene.skyAtmosphere.show=false;}if(!googleTileset){googleTileset=await Cesium.createGooglePhotorealistic3DTileset({key:sharedGoogleKey},{showCreditsOnScreen:true});googleViewer.scene.primitives.add(googleTileset)}
@@ -45,7 +45,7 @@ function setImagery(id){if(id==='google'){enableGoogle3D();return}
 $('google-3d').hidden=true;document.body.classList.remove('google-mode');
 
 const p=providers[id];if(!p)return;
-if(id==='maptiler'&&!sharedMaptilerKey){notify('MapTiler yapılandırması yüklenemedi. Cloudflare Worker dağıtımını kontrol edin.',8000);select.value=activeProvider;return}
+if(id==='maptiler'&&!sharedMaptilerKey){notify('MapTiler anahtarı çalışma ortamında bulunamadı. Cloudflare → atlas3d → Settings → Variables and Secrets (Build bölümü değil) alanını kontrol edin.',8000);select.value=activeProvider;return}
 clearImagery();
 if(id!=='topo'){const src={type:'raster',tileSize:p.tileSize||256};if(p.tiles)src.tiles=p.tiles;if(p.url)src.url=typeof p.url==='function'?p.url():p.url;if(p.attribution)src.attribution=p.attribution;map.addSource('atlas-imagery',src);const first=map.getStyle().layers.find(l=>l.type==='symbol');map.addLayer({id:'atlas-imagery-layer',type:'raster',source:'atlas-imagery',paint:{'raster-opacity':1}},first?.id)}
 activeProvider=id;select.value=id;notify(id==='topo'?'Topoğrafik harita etkin.':p.label+' görüntüsü yükleniyor…',4500)}

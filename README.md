@@ -8,7 +8,7 @@
 | Harita motoru | MapLibre GL JS 5 |
 | Uydu görüntüsü (Uydu / Hibrit) | Esri World Imagery + Esri yol/yer adı katmanları |
 | Topoğrafik harita | OpenTopoMap (eş yükselti eğrileri) |
-| Sokak haritası | CARTO Voyager (OpenStreetMap verisi) |
+| Sokak haritası | Esri World Street Map |
 | 3D arazi ve rakım | AWS Terrain Tiles (Terrarium, açık veri) |
 | Yer arama | OpenStreetMap Nominatim — Worker üzerinden `/api/search` (önbellekli) |
 

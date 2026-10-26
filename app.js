@@ -35,8 +35,8 @@ const style = {
     roads: raster([`${ESRI}/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}`], '', { maxzoom: 19 }),
     topo: raster(['https://a.tile.opentopomap.org/{z}/{x}/{y}.png', 'https://b.tile.opentopomap.org/{z}/{x}/{y}.png', 'https://c.tile.opentopomap.org/{z}/{x}/{y}.png'],
       'Harita © <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA), © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>', { maxzoom: 17 }),
-    street: raster(['a', 'b', 'c', 'd'].map(s => `https://${s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png`),
-      '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>', { maxzoom: 20 }),
+    street: raster([`${ESRI}/World_Street_Map/MapServer/tile/{z}/{y}/{x}`],
+      'Sokak haritası © Esri, HERE, Garmin, © OpenStreetMap katkıda bulunanlar', { maxzoom: 19 }),
     dem: {
       type: 'raster-dem', encoding: 'terrarium', tileSize: 256, maxzoom: 15,
       tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],

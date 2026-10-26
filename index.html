@@ -1,3 +1,55 @@
 <!doctype html>
-<html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#101923"><title>ATLAS3D — 3D Yolculuk Haritası</title><link href="https://api.mapbox.com/mapbox-gl-js/v3.16.0/mapbox-gl.css" rel="stylesheet"><link rel="stylesheet" href="./style.css"><style>#google-3d{position:fixed;inset:0;z-index:1}#google-3d[hidden]{display:none!important}body.google-mode #map{visibility:hidden}body.google-mode .panel{display:none}.top,.controls,.notice{z-index:5!important}</style></head>
-<body><div id="google-3d" hidden aria-label="Google fotogerçekçi üç boyutlu harita"></div><div id="map" role="application" aria-label="Üç boyutlu arazi haritası"></div><header class="top"><div><strong>ATLAS<span>3D</span></strong><small>Canlı arazi keşfi</small></div><span class="tag">BETA 0.1</span></header><div id="notice" class="notice" role="status">3D arazi yükleniyor…</div><div class="controls"><button id="locate" aria-label="Konumumu bul" title="Konumumu bul">◎</button><button id="follow" aria-label="Konumumu takip et" title="Takip">➤</button><button id="reset" aria-label="Kamera açısını sıfırla" title="3D görünüm">3D</button></div><section class="panel"><div class="panel-head"><div><small>ARAZİ KEŞFİ</small><h1 id="status">Bolu Dağı</h1></div><span id="gps" class="pill">GPS kapalı</span></div><div class="stats"><div><small>ARAZİ RAKIMI</small><b id="altitude">—</b></div><div><small>KONUM</small><b id="coords">—</b></div></div><p id="hint">Haritayı sürükleyin, döndürün veya konumunuzu açın. Rakım, seçili harita noktasındaki arazi yüksekliğidir.</p><button id="bolu" class="secondary">Bolu Dağı'na dön</button></section><script src="https://cesium.com/downloads/cesiumjs/releases/1.131/Build/Cesium/Cesium.js"></script><link rel="stylesheet" href="https://cesium.com/downloads/cesiumjs/releases/1.131/Build/Cesium/Widgets/widgets.css"><script src="https://api.mapbox.com/mapbox-gl-js/v3.16.0/mapbox-gl.js"></script><script src="./app.js"></script></body></html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0d1620">
+<title>ATLAS3D — 3D Yolculuk Haritası</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css">
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<div id="map" role="application" aria-label="Üç boyutlu arazi haritası"></div>
+<div id="google-3d" hidden aria-label="Google fotogerçekçi üç boyutlu harita"></div>
+
+<header class="top">
+  <div class="brand"><strong>ATLAS<span>3D</span></strong><small>Canlı arazi keşfi</small></div>
+  <form id="search" class="search" role="search" autocomplete="off">
+    <input id="q" type="search" placeholder="Yer ara… (ör. Abant Gölü)" aria-label="Yer ara">
+    <button type="submit" aria-label="Ara">⌕</button>
+    <ul id="results" class="results" hidden></ul>
+  </form>
+</header>
+
+<div id="notice" class="notice" role="status" hidden></div>
+
+<div class="controls">
+  <select id="layer" aria-label="Harita katmanı">
+    <option value="satellite">Uydu</option>
+    <option value="hybrid" selected>Hibrit</option>
+    <option value="topo">Topoğrafik</option>
+    <option value="street">Sokak</option>
+  </select>
+  <button id="locate" aria-label="Konumumu bul" title="Konumumu bul">◎</button>
+  <button id="follow" aria-label="Konumumu takip et" title="Takip">➤</button>
+  <button id="terrain" class="active" aria-label="3D araziyi aç/kapat" title="3D arazi">⛰</button>
+  <button id="reset" aria-label="Kamera açısını sıfırla" title="3D görünüm">3D</button>
+</div>
+
+<section class="panel">
+  <div class="panel-head">
+    <div><small>ARAZİ KEŞFİ</small><h1 id="status">Bolu Dağı</h1></div>
+    <span id="gps" class="pill">GPS kapalı</span>
+  </div>
+  <div class="stats">
+    <div><small>ARAZİ RAKIMI</small><b id="altitude">—</b></div>
+    <div><small>KONUM</small><b id="coords">—</b></div>
+  </div>
+  <p id="hint">Sürükleyin, iki parmakla döndürün/eğin. Rakım, ekran merkezindeki arazi yüksekliğidir.</p>
+  <button id="bolu" class="secondary">Bolu Dağı'na dön</button>
+</section>
+
+<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+<script src="./app.js"></script>
+</body>
+</html>

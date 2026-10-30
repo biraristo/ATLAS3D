@@ -133,6 +133,56 @@ const routes = {
    /api/traffic/flow/{z}/{x}/{y}.png        trafik akış karosu (2 dk önbellek)
    /api/traffic/incidents/{z}/{x}/{y}.png   kaza / yol çalışması karosu (2 dk önbellek)
    POST /api/traffic/route  { points: [[lon,lat],...] }  → güzergâhın trafikli süresi ve sıkışık kesimleri */
+// Mapbox arazi verisi (terrain-dem-v1, "mapbox" kodlaması) — anahtar sunucuda, karolar uzun süre önbellekte
+async function mapboxDem(url, env, ctx) {
+  const m = url.pathname.match(/^\/api\/dem\/(\d{1,2})\/(\d+)\/(\d+)\.png$/);
+  if (!m || +m[1] > 15) return new Response(null, { status: 404 });
+  const cacheKey = new Request(`https://atlas3d.cache/dem/${m[1]}/${m[2]}/${m[3]}`);
+  const hit = await caches.default.match(cacheKey); if (hit) return hit;
+  const r = await fetch(`https://api.mapbox.com/v4/mapbox.mapbox-terrain-dem-v1/${m[1]}/${m[2]}/${m[3]}.pngraw?access_token=${env.MAPBOX_TOKEN}`);
+  if (!r.ok) return new Response(null, { status: r.status === 404 ? 404 : 502, headers: { 'x-upstream': String(r.status) } });
+  const res = new Response(r.body, { headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=2592000', 'access-control-allow-origin': '*' } });
+  ctx.waitUntil(caches.default.put(cacheKey, res.clone()));
+  return res;
+}
+
+// Yazarken öneri: Photon (mekanlar, OSM) + Mapbox (adres, sokak, kapı numarası) birlikte
+const MB_TYPE = { address: 'house', street: 'street', neighborhood: 'suburb', locality: 'suburb', place: 'city', district: 'county', region: 'state', postcode: 'postcode', country: 'country' };
+async function mergedAutocomplete(p, env, ctx, origin) {
+  const q = clean(p.get('q')); if (q.length < 2) return json({ features: [] });
+  const lat = num(p.get('lat'), 2), lon = num(p.get('lon'), 2);
+  const cacheKey = new Request(`https://atlas3d.cache/ac/${encodeURIComponent(q.toLowerCase())}/${lat},${lon}`);
+  const hit = await caches.default.match(cacheKey); if (hit) return hit;
+  let pu = 'https://photon.komoot.io/api/?limit=7&lang=default&q=' + encodeURIComponent(q);
+  if (lat && lon) pu += `&lat=${num(p.get('lat'), 1)}&lon=${num(p.get('lon'), 1)}&location_bias_scale=0.4`;
+  let mu = `https://api.mapbox.com/search/geocode/v6/forward?q=${encodeURIComponent(q)}&autocomplete=true&language=tr&limit=5&access_token=${env.MAPBOX_TOKEN}`;
+  if (lat && lon) mu += `&proximity=${lon},${lat}`;
+  const [ph, mb] = await Promise.all([
+    fetch(pu, { headers: { 'User-Agent': UA, 'Referer': origin + '/' } }).then(r => (r.ok ? r.json() : null)).catch(() => null),
+    fetch(mu).then(r => (r.ok ? r.json() : null)).catch(() => null)
+  ]);
+  const photon = ph?.features || [];
+  const mapbox = (mb?.features || []).map(f => {
+    const pr = f.properties || {}, c = pr.context || {};
+    return { type: 'Feature', geometry: { type: 'Point', coordinates: [pr.coordinates?.longitude ?? f.geometry.coordinates[0], pr.coordinates?.latitude ?? f.geometry.coordinates[1]] },
+      properties: { source: 'mapbox', name: pr.feature_type === 'address' ? '' : pr.name, street: c.street?.name || c.address?.street_name || (pr.feature_type === 'street' ? pr.name : ''),
+        housenumber: c.address?.address_number || '', district: c.neighborhood?.name || c.locality?.name || '', city: c.place?.name || c.district?.name || '',
+        state: c.region?.name || '', country: c.country?.name || '', osm_value: MB_TYPE[pr.feature_type] || 'yes',
+        extent: pr.bbox ? [pr.bbox[0], pr.bbox[3], pr.bbox[2], pr.bbox[1]] : undefined } };
+  });
+  // Rakam içeren (adres gibi) aramalarda Mapbox önde; diğerlerinde mekanlar (Photon) önde
+  const addrFirst = /\d/.test(q), first = addrFirst ? mapbox : photon, second = addrFirst ? photon : mapbox;
+  const out = [], near = (a, b) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) < 0.004;
+  for (const f of [...first, ...second]) {
+    const key = (f.properties.name || f.properties.street || '').toLowerCase();
+    if (out.some(o => near(o.geometry.coordinates, f.geometry.coordinates) && (o.properties.name || o.properties.street || '').toLowerCase() === key)) continue;
+    out.push(f); if (out.length >= 8) break;
+  }
+  const res = new Response(JSON.stringify({ type: 'FeatureCollection', features: out }), { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=86400' } });
+  ctx.waitUntil(caches.default.put(cacheKey, res.clone()));
+  return res;
+}
+
 // TomTom rota yanıtını uygulamanın kullandığı OSRM biçimine çevir
 const TT_MAN = {
   DEPART: ['depart'], ARRIVE: ['arrive'], ARRIVE_LEFT: ['arrive', 'left'], ARRIVE_RIGHT: ['arrive', 'right'],
@@ -269,7 +319,7 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname === '/api/health') {
-      return json({ status: 'ok', keylessMode: true, runtimeGoogleKeyConfigured: Boolean(env.GOOGLE_MAPS_API_KEY), runtimeMaptilerKeyConfigured: Boolean(env.MAPTILER_API_KEY), trafficConfigured: Boolean(env.TOMTOM_API_KEY) });
+      return json({ status: 'ok', keylessMode: true, runtimeGoogleKeyConfigured: Boolean(env.GOOGLE_MAPS_API_KEY), runtimeMaptilerKeyConfigured: Boolean(env.MAPTILER_API_KEY), trafficConfigured: Boolean(env.TOMTOM_API_KEY), mapboxConfigured: Boolean(env.MAPBOX_TOKEN) });
     }
     if (url.pathname === '/api/config') {
       const cf = request.cf || {};
@@ -277,6 +327,12 @@ export default {
         maptilerKey: env.MAPTILER_API_KEY || '', googleTilesKey: env.GOOGLE_MAPS_API_KEY || '', traffic: Boolean(env.TOMTOM_API_KEY),
         ip: cf.latitude && cf.longitude ? { lat: Number(cf.latitude), lon: Number(cf.longitude), city: cf.city || '' } : null
       });
+    }
+    if (url.pathname.startsWith('/api/dem/') && env.MAPBOX_TOKEN) {
+      try { return await mapboxDem(url, env, ctx); } catch (e) { return new Response(null, { status: 502 }); }
+    }
+    if (url.pathname === '/api/autocomplete' && env.MAPBOX_TOKEN) {
+      try { return await mergedAutocomplete(url.searchParams, env, ctx, url.origin); } catch (e) { /* aşağıdaki Photon'a düş */ }
     }
     if (url.pathname.startsWith('/api/traffic/')) {
       try { return await traffic(request, url, env, ctx); }

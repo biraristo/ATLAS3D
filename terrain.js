@@ -68,9 +68,10 @@ function ensureContours() {
 }
 
 /* ================= Arazi seçenekleri ================= */
-// Eğim haritası ve eş yükselti eğrileri ATLAS3D'nin standart görünümüdür: her zaman açık, seçim sorulmaz.
-// Yükseklik abartma her açılışta 3× başlar (oturum içinde kaydırıcıyla değiştirilebilir).
-opts.slope = true; opts.contours = true; opts.exag = 3;
+// Eğim haritası ve eş yükselti eğrileri varsayılan olarak açıktır; kullanıcı tik ile kapatabilir, seçimi saklanır.
+// (Eski sürümlerden kalan "kapalı" kayıtlar bir kez açığa çekilir.) Yükseklik abartma her açılışta 3× başlar.
+if (!store.get('anaDefaultsV2', false)) { opts.slope = true; opts.contours = true; store.set('anaDefaultsV2', true); store.set('opts', opts); }
+opts.slope ??= true; opts.contours ??= true; opts.exag = 3;
 function applyTerrainOpts() {
   if (!map?.getLayer('a3-sat')) return;
   if (opts.slope) ensureSlopeLayer();
@@ -78,7 +79,11 @@ function applyTerrainOpts() {
   if (opts.contours) ensureContours().then(() => { ['a3-contour-line', 'a3-contour-label'].forEach(id => map.setLayoutProperty(id, 'visibility', opts.contours ? 'visible' : 'none')); }).catch(() => {});
   else ['a3-contour-line', 'a3-contour-label'].forEach(id => map.getLayer(id) && map.setLayoutProperty(id, 'visibility', 'none'));
   if (opts.terrain) map.setTerrain({ source: 'dem', exaggeration: opts.exag });
+  $('slope-legend').hidden = !opts.slope;
 }
+$('opt-slope').checked = opts.slope; $('opt-contours').checked = opts.contours;
+$('opt-slope').onchange = e => { opts.slope = e.target.checked; store.set('opts', opts); applyTerrainOpts(); };
+$('opt-contours').onchange = e => { opts.contours = e.target.checked; store.set('opts', opts); applyTerrainOpts(); };
 $('opt-exag').value = opts.exag; $('exag-val').textContent = nf1.format(opts.exag) + '×';
 $('opt-exag').oninput = e => {
   opts.exag = +e.target.value; $('exag-val').textContent = nf1.format(opts.exag) + '×';

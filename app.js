@@ -13,7 +13,7 @@ const store = {
 };
 /* ================= Tema (Sistem / Aydınlık / Koyu) ================= */
 const THEME_MQ = matchMedia('(prefers-color-scheme: dark)');
-let themePref = store.get('theme', 'system');
+let themePref = store.get('theme', 'light'); // varsayılan aydınlık; kullanıcı menüden koyu ya da sistem seçebilir
 const isDark = () => themePref === 'dark' || (themePref === 'system' && THEME_MQ.matches);
 function setThemeAttr() {
   const dark = isDark();
@@ -357,6 +357,27 @@ $('opt-terrain').onchange = e => {
 };
 $('opt-buildings').onchange = e => { opts.buildings = e.target.checked; store.set('opts', opts); applyBasemap(); };
 $('opt-labels').onchange = e => { opts.labels = e.target.checked; store.set('opts', opts); applyBasemap(); };
+
+/* ----- Hızlı katman paneli: rota ve navigasyon ekranında da harita türü ve katmanlar değiştirilebilsin ----- */
+// Satırlar ana katman menüsündeki tiklere bağlıdır: değişiklik oradaki tik üzerinden uygulanır, iki yer hep aynı kalır.
+const QL_ROWS = [['opt-terrain', 'landscape', '3D arazi'], ['opt-buildings', 'apartment', '3D binalar'], ['opt-labels', 'label', 'Etiketler'], ['opt-traffic', 'traffic', 'Canlı trafik'], ['opt-slope', 'trending_up', 'Eğim haritası'], ['opt-contours', 'terrain', 'Eş yükselti eğrileri']];
+function renderQuickLayers() {
+  const box = $('qlayers');
+  const rows = QL_ROWS.filter(([id]) => $(id) && !$(id).closest('.lp-toggle')?.hidden); // ör. trafik anahtarı yoksa satır gösterilmez
+  box.innerHTML = `<div class="ql-h"><b>Harita</b><button class="icon-btn" id="ql-close" aria-label="Kapat"><span class="ms">close</span></button></div>
+    <div class="ql-bm">${Object.entries(BASEMAPS).map(([id, b]) => `<button class="${id === basemap ? 'on' : ''}" data-bm="${id}"><span class="ms">${BM_ICON[id] || 'map'}</span>${b.label}</button>`).join('')}</div>
+    <div class="ql-rows">${rows.map(([id, ic, l]) => `<label class="ql-row"><span class="ms">${ic}</span><span>${l}</span><input type="checkbox" data-opt="${id}" ${$(id).checked ? 'checked' : ''}><i class="ql-sw"></i></label>`).join('')}</div>`;
+  $('ql-close').onclick = () => toggleQuickLayers(false);
+  box.querySelectorAll('[data-bm]').forEach(b => { b.onclick = () => { setBasemap(b.dataset.bm); renderQuickLayers(); }; });
+  box.querySelectorAll('[data-opt]').forEach(c => { c.onchange = () => { const o = $(c.dataset.opt); o.checked = c.checked; o.dispatchEvent(new Event('change')); }; });
+}
+function toggleQuickLayers(show = $('qlayers').hidden) {
+  $('qlayers').hidden = !show; $('ctrl-layers').classList.toggle('on', show);
+  if (show) renderQuickLayers();
+}
+$('ctrl-layers').onclick = e => { e.stopPropagation(); toggleQuickLayers(); };
+$('qlayers').addEventListener('click', e => e.stopPropagation()); // panel içi tıklamalar (yeniden çizim dahil) paneli kapatmasın
+document.addEventListener('click', e => { if (!$('qlayers').hidden && !$('qlayers').contains(e.target) && e.target !== $('ctrl-layers')) toggleQuickLayers(false); });
 
 /* ================= Yükseklik verisi (Terrarium DEM, anahtarsız) ================= */
 const DEM = (() => {

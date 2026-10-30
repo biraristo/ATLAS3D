@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#ffffff">
 <meta name="description" content="ATLAS3D — 3D harita, yer arama ve yol tarifi">
 <title>ATLAS3D Haritalar</title>
-<script>try{var t=JSON.parse(localStorage.getItem('a3_theme')||'"system"');document.documentElement.dataset.theme=(t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches))?'dark':'light'}catch(e){}</script>
+<script>try{var t=JSON.parse(localStorage.getItem('a3_theme')||'"light"');document.documentElement.dataset.theme=(t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches))?'dark':'light'}catch(e){}</script>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
@@ -61,8 +61,9 @@
     <label class="lp-toggle" id="opt-traffic-row" hidden><input type="checkbox" id="opt-traffic"> <span class="ms">traffic</span> Canlı trafik</label>
     <div class="slope-legend tr-legend" id="traffic-legend" hidden><span><i style="background:#16e05f"></i>akıcı</span><span><i style="background:#f29900"></i>yavaş</span><span><i style="background:#ea4335"></i>sıkışık</span><span><i style="background:#a50e0e"></i>durma</span></div>
     <div class="lp-title">Arazi analizi</div>
-    <p class="lp-note">Eğim haritası ve eş yükselti eğrileri her zaman açıktır.</p>
+    <label class="lp-toggle"><input type="checkbox" id="opt-slope" checked> <span class="ms">trending_up</span> Eğim haritası</label>
     <div class="slope-legend" id="slope-legend"><span><i style="background:#a3e635"></i>%5–10</span><span><i style="background:#facc15"></i>%10–20</span><span><i style="background:#f97316"></i>%20–35</span><span><i style="background:#dc2626"></i>%35–60</span><span><i style="background:#7e22ce"></i>%60+</span></div>
+    <label class="lp-toggle"><input type="checkbox" id="opt-contours" checked> <span class="ms">terrain</span> Eş yükselti eğrileri</label>
     <label class="lp-range"><span class="ms">height</span> Yükseklik abartma <input type="range" id="opt-exag" min="1" max="3" step="0.1" value="3"><b id="exag-val">3×</b></label>
     </div>
   </div>
@@ -84,8 +85,11 @@
     <button class="ctrl" id="zoom-in" aria-label="Yakınlaştır"><span class="ms">add</span></button>
     <button class="ctrl" id="zoom-out" aria-label="Uzaklaştır"><span class="ms">remove</span></button>
   </div>
+  <button class="ctrl ctrl-layers" id="ctrl-layers" aria-label="Katmanlar" title="Harita türü ve katmanlar"><span class="ms">layers</span></button>
   <button class="ctrl tilt on" id="tilt" aria-label="3D görünüm" aria-pressed="true" title="3D görünüm açık · 2D için dokunun">3D</button>
 </div>
+
+<div id="qlayers" class="qlayers" hidden role="dialog" aria-label="Harita türü ve katmanlar"></div>
 
 <!-- Menü çekmecesi -->
 <div id="drawer-bg" class="drawer-bg" hidden></div>

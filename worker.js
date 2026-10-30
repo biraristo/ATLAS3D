@@ -133,18 +133,75 @@ const routes = {
    /api/traffic/flow/{z}/{x}/{y}.png        trafik akış karosu (2 dk önbellek)
    /api/traffic/incidents/{z}/{x}/{y}.png   kaza / yol çalışması karosu (2 dk önbellek)
    POST /api/traffic/route  { points: [[lon,lat],...] }  → güzergâhın trafikli süresi ve sıkışık kesimleri */
-// Mapbox arazi verisi (terrain-dem-v1, "mapbox" kodlaması) — anahtar sunucuda, karolar uzun süre önbellekte
-async function mapboxDem(url, env, ctx) {
-  const m = url.pathname.match(/^\/api\/dem\/(\d{1,2})\/(\d+)\/(\d+)\.png$/);
-  if (!m || +m[1] > 15) return new Response(null, { status: 404 });
-  const cacheKey = new Request(`https://atlas3d.cache/dem/${m[1]}/${m[2]}/${m[3]}`);
-  const hit = url.searchParams.get('v') ? null : await caches.default.match(cacheKey); if (hit) return hit;
-  const V = { a: 'mapbox.mapbox-terrain-dem-v1/{p}.pngraw', b: 'mapbox.terrain-rgb/{p}.pngraw', c: 'mapbox.mapbox-terrain-dem-v1/{p}@2x.pngraw', d: 'mapbox.mapbox-terrain-dem-v1/{p}.webp' }[url.searchParams.get('v') || 'a'] || 'mapbox.mapbox-terrain-dem-v1/{p}.pngraw';
-  const r = await fetch(`https://api.mapbox.com/v4/${V.replace('{p}', `${m[1]}/${m[2]}/${m[3]}`)}?access_token=${env.MAPBOX_TOKEN}`, { headers: { 'User-Agent': 'ATLAS3D/2.0', 'Referer': url.origin + '/' } });
-  if (!r.ok) return new Response(null, { status: r.status === 404 ? 404 : 502, headers: { 'x-upstream': r.status + ' ' + (await r.text()).slice(0, 200).replace(env.MAPBOX_TOKEN, '***').replace(/[^\x20-\x7e]/g, ' ') } });
-  const res = new Response(r.body, { headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=2592000', 'access-control-allow-origin': '*' } });
-  ctx.waitUntil(caches.default.put(cacheKey, res.clone()));
-  return res;
+// Google: yer ayrıntıları (puan, saatler, fotoğraflar), sokak görünümü ve fotogerçekçi 3D karolar — anahtar yalnızca sunucuda
+async function google(request, url, env, ctx) {
+  const key = env.GOOGLE_MAPS_API_KEY, p = url.searchParams;
+  const cached = async (ck, make, ttl) => {
+    const k = new Request('https://atlas3d.cache/g/' + ck), hit = await caches.default.match(k); if (hit) return hit;
+    const res = await make(); if (!res.ok) return res;
+    const out = new Response(res.body, { status: 200, headers: { 'content-type': res.headers.get('content-type') || 'application/json; charset=utf-8', 'cache-control': 'public, max-age=' + ttl } });
+    ctx.waitUntil(caches.default.put(k, out.clone()));
+    return out;
+  };
+  const gerr = async r => json({ error: 'google ' + r.status, detail: (await r.text()).slice(0, 400).replace(key, '***') }, r.status === 429 ? 429 : 502);
+  // Fotogerçekçi 3D karolar: Cesium tüm istekleri buraya yapar, anahtarı biz ekleriz
+  if (url.pathname.startsWith('/v1/3dtiles/')) {
+    const q = new URLSearchParams(url.search); q.set('key', key);
+    const r = await fetch('https://tile.googleapis.com' + url.pathname + '?' + q);
+    return new Response(r.body, { status: r.status, headers: { 'content-type': r.headers.get('content-type') || 'application/octet-stream', 'cache-control': r.ok ? 'public, max-age=3600' : 'no-store' } });
+  }
+  if (url.pathname === '/api/google/place') {
+    const q = clean(p.get('q')), lat = +p.get('lat'), lon = +p.get('lon');
+    if (!q || !Number.isFinite(lat) || !Number.isFinite(lon)) return json({ error: 'params' }, 400);
+    return cached(`place/${encodeURIComponent(q.toLowerCase())}/${lat.toFixed(4)},${lon.toFixed(4)}`, async () => {
+      const r = await fetch('https://places.googleapis.com/v1/places:searchText', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'X-Goog-Api-Key': key,
+          'X-Goog-FieldMask': 'places.id,places.displayName,places.location,places.rating,places.userRatingCount,places.priceLevel,places.primaryTypeDisplayName,places.nationalPhoneNumber,places.websiteUri,places.googleMapsUri,places.currentOpeningHours.openNow,places.regularOpeningHours.weekdayDescriptions,places.photos,places.businessStatus,places.editorialSummary' },
+        body: JSON.stringify({ textQuery: q, languageCode: 'tr', regionCode: 'TR', maxResultCount: 3, locationBias: { circle: { center: { latitude: lat, longitude: lon }, radius: 300 } } })
+      });
+      if (!r.ok) return gerr(r);
+      const d = await r.json();
+      const dist = pl => { const a = pl.location || {}; const dx = (a.longitude - lon) * 111320 * Math.cos(lat * Math.PI / 180), dy = (a.latitude - lat) * 110540; return Math.hypot(dx, dy); };
+      const pl = (d.places || []).filter(x => dist(x) < 350).sort((a, b) => dist(a) - dist(b))[0];
+      if (!pl) return json({ found: false }, 200, 'public, max-age=604800');
+      return json({
+        found: true, id: pl.id, name: pl.displayName?.text, rating: pl.rating ?? null, count: pl.userRatingCount ?? 0, price: pl.priceLevel || null,
+        type: pl.primaryTypeDisplayName?.text || '', phone: pl.nationalPhoneNumber || '', web: pl.websiteUri || '', url: pl.googleMapsUri || '',
+        openNow: pl.currentOpeningHours?.openNow ?? null, hours: pl.regularOpeningHours?.weekdayDescriptions || [], status: pl.businessStatus || '',
+        summary: pl.editorialSummary?.text || '',
+        photos: (pl.photos || []).slice(0, 8).map(ph => ({ n: ph.name, by: ph.authorAttributions?.[0]?.displayName || '', byUrl: ph.authorAttributions?.[0]?.uri || '' }))
+      }, 200);
+    }, 604800);
+  }
+  if (url.pathname === '/api/google/photo') {
+    const n = p.get('n') || '', w = Math.max(100, Math.min(1200, +p.get('w') || 480));
+    if (!/^places\/[\w-]+\/photos\/[\w-]+$/.test(n)) return json({ error: 'photo' }, 400);
+    return cached(`photo/${n}/${w}`, async () => {
+      const r = await fetch(`https://places.googleapis.com/v1/${n}/media?maxWidthPx=${w}&key=${key}`);
+      return r.ok ? r : gerr(r);
+    }, 2592000);
+  }
+  if (url.pathname === '/api/google/sv') {
+    const lat = +p.get('lat'), lon = +p.get('lon'); if (!Number.isFinite(lat) || !Number.isFinite(lon)) return json({ error: 'params' }, 400);
+    return cached(`sv/${lat.toFixed(5)},${lon.toFixed(5)}`, async () => {
+      const r = await fetch(`https://maps.googleapis.com/maps/api/streetview/metadata?location=${lat},${lon}&radius=80&source=outdoor&key=${key}`);
+      if (!r.ok) return gerr(r);
+      const d = await r.json();
+      if (d.status !== 'OK') return json({ ok: false, status: d.status, detail: (d.error_message || '').replace(key, '***') }, 200, 'public, max-age=604800');
+      const a = d.location || {}, y = Math.sin((lon - a.lng) * Math.PI / 180) * Math.cos(lat * Math.PI / 180), x = Math.cos(a.lat * Math.PI / 180) * Math.sin(lat * Math.PI / 180) - Math.sin(a.lat * Math.PI / 180) * Math.cos(lat * Math.PI / 180) * Math.cos((lon - a.lng) * Math.PI / 180);
+      return json({ ok: true, pano: d.pano_id, lat: a.lat, lon: a.lng, heading: Math.round((Math.atan2(y, x) * 180 / Math.PI + 360) % 360), date: d.date || '' }, 200);
+    }, 2592000);
+  }
+  if (url.pathname === '/api/google/svimg') {
+    const pano = p.get('pano') || '', h = Math.round(+p.get('h') || 0) % 360;
+    if (!/^[\w-]{10,80}$/.test(pano)) return json({ error: 'pano' }, 400);
+    return cached(`svimg/${pano}/${h}`, async () => {
+      const r = await fetch(`https://maps.googleapis.com/maps/api/streetview?size=640x320&pano=${pano}&heading=${h}&pitch=0&fov=90&key=${key}`);
+      return r.ok ? r : gerr(r);
+    }, 2592000);
+  }
+  return json({ error: 'not-found' }, 404);
 }
 
 // Yazarken öneri: Photon (mekanlar, OSM) + Mapbox (adres, sokak, kapı numarası) birlikte
@@ -325,12 +382,12 @@ export default {
     if (url.pathname === '/api/config') {
       const cf = request.cf || {};
       return json({
-        maptilerKey: env.MAPTILER_API_KEY || '', googleTilesKey: env.GOOGLE_MAPS_API_KEY || '', traffic: Boolean(env.TOMTOM_API_KEY),
+        maptilerKey: env.MAPTILER_API_KEY || '', google: Boolean(env.GOOGLE_MAPS_API_KEY), traffic: Boolean(env.TOMTOM_API_KEY),
         ip: cf.latitude && cf.longitude ? { lat: Number(cf.latitude), lon: Number(cf.longitude), city: cf.city || '' } : null
       });
     }
-    if (url.pathname.startsWith('/api/dem/') && env.MAPBOX_TOKEN) {
-      try { return await mapboxDem(url, env, ctx); } catch (e) { return new Response(null, { status: 502 }); }
+    if ((url.pathname.startsWith('/api/google/') || url.pathname.startsWith('/v1/3dtiles/')) && env.GOOGLE_MAPS_API_KEY) {
+      try { return await google(request, url, env, ctx); } catch (e) { return json({ error: String(e.message || e) }, 502); }
     }
     if (url.pathname === '/api/autocomplete' && env.MAPBOX_TOKEN) {
       try { return await mergedAutocomplete(url.searchParams, env, ctx, url.origin); } catch (e) { /* aşağıdaki Photon'a düş */ }

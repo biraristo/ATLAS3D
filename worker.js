@@ -144,7 +144,7 @@ async function traffic(request, url, env, ctx) {
     const cacheKey = new Request(`https://atlas3d.cache/traffic/${kind}/${z}/${x}/${y}`);
     const hit = await caches.default.match(cacheKey); if (hit) return hit;
     const up = kind === 'flow'
-      ? `${base}/traffic/map/4/tile/flow/relative0/${z}/${x}/${y}.png?tileSize=256&thickness=8&key=${key}`
+      ? `${base}/traffic/map/4/tile/flow/relative0/${z}/${x}/${y}.png?tileSize=256&key=${key}`
       : `${base}/traffic/map/4/tile/incidents/s3/${z}/${x}/${y}.png?tileSize=256&key=${key}`;
     const r = await fetch(up);
     if (!r.ok) { const t = (await r.text()).slice(0, 300).replace(key, '***'); return new Response(null, { status: r.status === 403 || r.status === 429 ? 204 : 502, headers: { 'x-upstream': r.status + ' ' + t.replace(/[^\x20-\x7e]/g, ' ') } }); }

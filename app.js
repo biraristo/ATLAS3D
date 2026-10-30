@@ -210,31 +210,26 @@ function applyBasemap() {
   const other = sat ? 'default' : 'satellite';
   $('layers-thumb').style.backgroundImage = `url(${BASEMAPS[other].thumb})`;
   $('layers-btn').dataset.other = other;
-  document.querySelectorAll('.bm').forEach(b => b.classList.toggle('on', b.dataset.id === basemap));
+  document.querySelectorAll('.bm').forEach(b => { b.classList.toggle('on', b.dataset.id === basemap); b.setAttribute('aria-checked', b.dataset.id === basemap); });
 }
 function setBasemap(id) {
   if (id === 'google') { openGoogle3D(); return; }
   basemap = id; store.set('basemap', id); applyBasemap();
 }
+const BM_ICON = { default: 'map', satellite: 'satellite_alt', terrain: 'terrain', google: 'public' };
 function renderLayerPop() {
-  const row = $('basemaps'); row.innerHTML = '';
+  const row = $('mapbar-seg'); row.innerHTML = '';
   for (const [id, b] of Object.entries(BASEMAPS)) {
-    const btn = document.createElement('button'); btn.className = 'bm'; btn.dataset.id = id;
-    btn.innerHTML = `<span class="t" style="background-image:url(${b.thumb})"></span>${b.label}`;
+    const btn = document.createElement('button'); btn.className = 'bm'; btn.dataset.id = id; btn.setAttribute('role', 'radio');
+    btn.innerHTML = `<span class="ms">${BM_ICON[id] || 'map'}</span><span>${id === 'default' ? 'Harita' : b.label}</span>`;
     btn.onclick = () => setBasemap(id);
     row.appendChild(btn);
   }
   $('opt-terrain').checked = opts.terrain; $('opt-buildings').checked = opts.buildings; $('opt-labels').checked = opts.labels;
 }
 renderLayerPop();
-$('layers-btn').onclick = e => {
-  e.stopPropagation();
-  if (isMobile()) { $('layers-pop').hidden = !$('layers-pop').hidden; return; }
-  setBasemap($('layers-btn').dataset.other || 'satellite'); // masaüstünde Google gibi tek tıkla uydu/harita
-};
-$('layers').addEventListener('mouseenter', () => { if (!isMobile()) $('layers-pop').hidden = false; });
-$('layers').addEventListener('mouseleave', () => { if (!isMobile()) $('layers-pop').hidden = true; });
-document.addEventListener('click', e => { if (!$('layers').contains(e.target)) $('layers-pop').hidden = true; });
+$('layers-btn').onclick = e => { e.stopPropagation(); $('layers-pop').hidden = !$('layers-pop').hidden; $('layers-btn').classList.toggle('on', !$('layers-pop').hidden); };
+document.addEventListener('click', e => { if (!$('layers').contains(e.target)) { $('layers-pop').hidden = true; $('layers-btn').classList.remove('on'); } });
 $('opt-terrain').onchange = e => {
   opts.terrain = e.target.checked; store.set('opts', opts);
   map.setTerrain(opts.terrain ? { source: 'dem', exaggeration: EXAG } : null);
@@ -519,6 +514,7 @@ function setSheet(state, px) {
   const h = px ?? sheetHeights()[state];
   document.documentElement.style.setProperty('--sheet-h', h + 'px');
   body.classList.toggle('sheet-full', state === 'full');
+  body.classList.toggle('sheet-high', h > innerHeight - 150); // üst çubukla çakışmasın
 }
 function openPanel(render, { mode = 'place', push = false, sheet = 'peek' } = {}) {
   render.mode = render.mode || mode;
@@ -565,7 +561,8 @@ $('panel-collapse').onclick = () => body.classList.toggle('panel-collapsed');
     if (!dragging) return;
     const dy = startY - e.clientY; if (Math.abs(dy) > 6) moved = true;
     const { min, full } = sheetHeights();
-    document.documentElement.style.setProperty('--sheet-h', Math.max(min - 60, Math.min(full, startH + dy)) + 'px');
+    const nh = Math.max(min - 60, Math.min(full, startH + dy));
+    document.documentElement.style.setProperty('--sheet-h', nh + 'px'); body.classList.toggle('sheet-high', nh > innerHeight - 150);
   });
   const end = () => {
     if (!dragging) return; dragging = false; panel.style.transition = '';
@@ -849,12 +846,6 @@ function showList(title, places, { fit = false, sub = '', onRefresh = null } = {
 
 /* ----- Kategori çipleri ----- */
 function setActiveChip(id) { document.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.id === id)); }
-NEARBY.forEach(n => {
-  const b = document.createElement('button'); b.className = 'chip'; b.dataset.id = n.id;
-  b.innerHTML = `<span class="ms">${n.icon}</span>${n.label}`;
-  b.onclick = () => nearby(n);
-  $('chips').appendChild(b);
-});
 async function nearby(n) {
   if (!map) return;
   openPanel(el => { el.innerHTML = `<div class="loading"><div class="spinner"></div>${esc(n.label)} aranıyor…</div>`; }, { mode: 'list' });

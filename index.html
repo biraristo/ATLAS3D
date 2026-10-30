@@ -46,8 +46,26 @@
   <div id="suggest" class="suggest" hidden></div>
 </div>
 
-<!-- Kategori çipleri -->
-<div id="chips" class="chips" role="toolbar" aria-label="Yakındaki yerler"></div>
+<!-- Üst çubuk: harita türü ve katmanlar -->
+<div id="mapbar" class="mapbar" role="toolbar" aria-label="Harita türü ve katmanlar">
+  <div class="seg" id="mapbar-seg" role="radiogroup" aria-label="Harita türü"></div>
+  <div class="layers" id="layers">
+    <button class="layers-btn" id="layers-btn" aria-label="Katmanlar" aria-haspopup="true"><span class="thumb" id="layers-thumb" hidden></span><span class="ms">layers</span><span class="lbl">Katmanlar</span></button>
+    <div class="layers-pop" id="layers-pop" hidden>
+    <div class="lp-title">Harita ayrıntıları</div>
+    <label class="lp-toggle"><input type="checkbox" id="opt-terrain" checked> <span class="ms">landscape</span> 3D arazi</label>
+    <label class="lp-toggle"><input type="checkbox" id="opt-buildings" checked> <span class="ms">apartment</span> 3D binalar</label>
+    <label class="lp-toggle"><input type="checkbox" id="opt-labels" checked> <span class="ms">label</span> Etiketler</label>
+    <label class="lp-toggle" id="opt-traffic-row" hidden><input type="checkbox" id="opt-traffic"> <span class="ms">traffic</span> Canlı trafik</label>
+    <div class="slope-legend tr-legend" id="traffic-legend" hidden><span><i style="background:#16e05f"></i>akıcı</span><span><i style="background:#f29900"></i>yavaş</span><span><i style="background:#ea4335"></i>sıkışık</span><span><i style="background:#a50e0e"></i>durma</span></div>
+    <div class="lp-title">Arazi analizi</div>
+    <label class="lp-toggle"><input type="checkbox" id="opt-slope"> <span class="ms">trending_up</span> Eğim haritası</label>
+    <div class="slope-legend" id="slope-legend" hidden><span><i style="background:#a3e635"></i>%5–10</span><span><i style="background:#facc15"></i>%10–20</span><span><i style="background:#f97316"></i>%20–35</span><span><i style="background:#dc2626"></i>%35–60</span><span><i style="background:#7e22ce"></i>%60+</span></div>
+    <label class="lp-toggle"><input type="checkbox" id="opt-contours"> <span class="ms">terrain</span> Eş yükselti eğrileri</label>
+    <label class="lp-range"><span class="ms">height</span> Yükseklik abartma <input type="range" id="opt-exag" min="1" max="3" step="0.1" value="1.2"><b id="exag-val">1,2×</b></label>
+    </div>
+  </div>
+</div>
 
 <!-- Sol panel / mobil alt sayfa -->
 <aside id="panel" class="panel" hidden aria-live="polite">
@@ -66,26 +84,6 @@
     <button class="ctrl" id="zoom-out" aria-label="Uzaklaştır"><span class="ms">remove</span></button>
   </div>
   <button class="ctrl tilt" id="tilt" aria-label="2D / 3D" title="2D / 3D">2D</button>
-</div>
-
-<!-- Katmanlar -->
-<div class="layers" id="layers">
-  <button class="layers-btn" id="layers-btn" aria-label="Katmanlar"><span class="thumb" id="layers-thumb"></span><span class="lbl"><span class="ms">layers</span>Katmanlar</span></button>
-  <div class="layers-pop" id="layers-pop" hidden>
-    <div class="lp-title">Harita türü</div>
-    <div class="lp-row" id="basemaps"></div>
-    <div class="lp-title">Harita ayrıntıları</div>
-    <label class="lp-toggle"><input type="checkbox" id="opt-terrain" checked> <span class="ms">landscape</span> 3D arazi</label>
-    <label class="lp-toggle"><input type="checkbox" id="opt-buildings" checked> <span class="ms">apartment</span> 3D binalar</label>
-    <label class="lp-toggle"><input type="checkbox" id="opt-labels" checked> <span class="ms">label</span> Etiketler</label>
-    <label class="lp-toggle" id="opt-traffic-row" hidden><input type="checkbox" id="opt-traffic"> <span class="ms">traffic</span> Canlı trafik</label>
-    <div class="slope-legend tr-legend" id="traffic-legend" hidden><span><i style="background:#16e05f"></i>akıcı</span><span><i style="background:#f29900"></i>yavaş</span><span><i style="background:#ea4335"></i>sıkışık</span><span><i style="background:#a50e0e"></i>durma</span></div>
-    <div class="lp-title">Arazi analizi</div>
-    <label class="lp-toggle"><input type="checkbox" id="opt-slope"> <span class="ms">trending_up</span> Eğim haritası</label>
-    <div class="slope-legend" id="slope-legend" hidden><span><i style="background:#a3e635"></i>%5–10</span><span><i style="background:#facc15"></i>%10–20</span><span><i style="background:#f97316"></i>%20–35</span><span><i style="background:#dc2626"></i>%35–60</span><span><i style="background:#7e22ce"></i>%60+</span></div>
-    <label class="lp-toggle"><input type="checkbox" id="opt-contours"> <span class="ms">terrain</span> Eş yükselti eğrileri</label>
-    <label class="lp-range"><span class="ms">height</span> Yükseklik abartma <input type="range" id="opt-exag" min="1" max="3" step="0.1" value="1.2"><b id="exag-val">1,2×</b></label>
-  </div>
 </div>
 
 <!-- Menü çekmecesi -->

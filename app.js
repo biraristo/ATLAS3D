@@ -1374,6 +1374,7 @@ async function startNav() {
   $('nav-top').hidden = false; $('nav-bottom').hidden = false;
   $('nav-mute-icon').textContent = navMuted ? 'volume_off' : 'volume_up';
   try { wakeLock = await navigator.wakeLock?.request('screen'); } catch {}
+  if (typeof liveFuelStart === 'function') liveFuelStart();
   meListeners.add(navTick); navTick(true);
   navAltAt = Date.now(); drawRoutes(); setTimeout(() => navAltRefresh(), 60000);
   say(navRoute.steps[0]?.text.replace(' — ', ', ') || 'Navigasyon başladı');
@@ -1381,6 +1382,7 @@ async function startNav() {
 function stopNav() {
   if (typeof AN !== 'undefined' && AN.open && AN.nav) closeAnalysis();
   navActive = false; meListeners.delete(navTick);
+  if (typeof liveFuelStop === 'function') liveFuelStop();
   body.classList.remove('navigating');
   ['nav-top', 'nav-bottom', 'nav-next', 'nav-terrain'].forEach(id => { $(id).hidden = true; });
   try { wakeLock?.release(); } catch {} wakeLock = null;
@@ -1424,6 +1426,7 @@ async function navTick(force) {
   }
   const along = s.along, remaining = Math.max(0, r.total - along); navAlong = along;
   if (typeof analysisTick === 'function') analysisTick(along);
+  if (typeof liveFuelTick === 'function') liveFuelTick(r, along);
   let nextIdx = r.steps.findIndex((st, i) => i > 0 && st.at > along + 3);
   if (nextIdx < 0) nextIdx = r.steps.length - 1;
   const next = r.steps[nextIdx], toNext = Math.max(0, next.at - along);

@@ -11,7 +11,7 @@ Telefonda uygulama gibi kurulabilen (PWA) **3D** harita. Rakım ve eğim analizi
 - **Yolculuk maliyeti:** araç tipi (hatchback, sedan, SUV, hafif ticari, motosiklet), yakıt (benzin, dizel, LPG, elektrik), ortalama tüketim ve yolcu sayısına göre yakıt + geçiş ücreti toplamı, kişi başı maliyet; tüketim eğim, hız, hızlanma ve rölantiyi hesaba katan fizik modeliyle tahmin edilir ve yakıtın nereye gittiği gösterilir
 - **Canlı trafik (TomTom anahtarı varsa):** trafik katmanı, trafiğe göre süre ve rota, ücretli yol içermeyen seçenek, ulaşılabilir alan
 - **Rakım ve eğim:** eğime göre renklendirilmiş rota, etkileşimli yükseklik profili, toplam tırmanış/iniş, dik bölümler, eğime göre düzeltilmiş yürüyüş/bisiklet süresi, ayrıntılı rota analizi ve GPX
-- **Navigasyon:** sesli yönlendirme, rotadan çıkınca yeniden hesaplama, anlık rakım/eğim, dik yokuş uyarısı
+- **Navigasyon:** sesli yönlendirme, rotadan çıkınca yeniden hesaplama, anlık rakım/eğim, dik yokuş uyarısı, anlık yakıt tüketimi (GPS hızı, hızlanma ve eğimden), harcanan ve kalan tahmini maliyet, hız önerisi ve yolculuk sonu özeti
 - **Arazi analizi:** eğim haritası, eş yükselti eğrileri, merkez/imleç rakım-eğim göstergesi
 - **Araçlar:** mesafe ölçme ve arazi kesiti, rotanın 3D kuş bakışı önizlemesi, sağ tık/uzun basma menüsü
 

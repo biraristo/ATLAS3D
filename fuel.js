@@ -99,15 +99,18 @@ function routeCost(r) {
   const body = BODIES[VEH.body], fuel = FUELS[VEH.fuel], avg = vehAvg(), speed = speedFn(r);
   const ferry = (r.steps || []).filter(s => s.mode === 'ferry').map(s => [s.at, s.at + s.distance]);
   const onFerry = x => ferry.some(([a, b]) => x >= a && x <= b);
-  let E = 0, Eflat = 0, idle = 0, km = 0; const parts = { roll: 0, aero: 0, accel: 0, grade: 0 };
+  let E = 0, Eflat = 0, idle = 0, km = 0, cumE = null; const parts = { roll: 0, aero: 0, accel: 0, grade: 0 };
   const pr = r.profile;
   if (pr && pr.dists?.length > 1) {
     const el = smoothElev(pr.elevs, pr.step);
+    cumE = new Float64Array(pr.dists.length); // rota boyunca biriken planlanan enerji (navigasyonda karşılaştırma için)
     for (let i = 1; i < pr.dists.length; i++) {
+      cumE[i] = E;
       const dx = pr.dists[i] - pr.dists[i - 1], mid = pr.dists[i] - dx / 2; if (dx <= 0 || onFerry(mid)) continue;
       const v = speed(mid), s = segEnergy(body, fuel, v, dx, el[i] - el[i - 1], el[i]), f = segEnergy(body, fuel, v, dx, 0, el[i]);
       E += s.e; Eflat += f.e; idle += s.idle; km += dx / 1000;
       for (const k in parts) parts[k] += s.parts[k];
+      cumE[i] = E;
     }
   } else {
     // Profil henüz yoksa: düz yol varsayımıyla adım adım
@@ -122,7 +125,8 @@ function routeCost(r) {
   const tot = Object.values(parts).reduce((a, b) => a + b, 0) + idle || 1;
   const out = {
     sig, qty, unit: fuel.unit, per100: km ? qty / km * 100 : 0, price: p.v, priceSrc: p.src, fuelCost, toll, total: fuelCost + toll,
-    perPerson: VEH.pax > 1 ? (fuelCost + toll) / VEH.pax : null, climbQty: Math.max(0, qty - flatQty), exact: !!pr,
+    perPerson: VEH.pax > 1 ? (fuelCost + toll) / VEH.pax : null, climbQty: Math.max(0, qty - flatQty), exact: !!pr, k,
+    plan: cumE ? { dists: pr.dists, qty: Array.from(cumE, e => e * k) } : null,
     shares: { aero: parts.aero / tot, roll: parts.roll / tot, grade: parts.grade / tot, accel: parts.accel / tot, idle: idle / tot }
   };
   COST_CACHE.set(r, out);
@@ -181,4 +185,119 @@ function wireVehicle(root, rerender) {
   num('vf-avg', 'avg', 60); num('vf-price', 'price', 500);
   root.querySelector('#vf-minus')?.addEventListener('click', () => { VEH.pax = Math.max(1, VEH.pax - 1); apply(); });
   root.querySelector('#vf-plus')?.addEventListener('click', () => { VEH.pax = Math.min(9, VEH.pax + 1); apply(); });
+}
+
+/* ================= Navigasyonda anlık tüketim =================
+   Her GPS güncellemesinde: hız (GPS ya da rota üzerindeki ilerlemeden), birkaç saniyelik ortalamayla yumuşatılır;
+   hızlanma iki ölçüm arasındaki hız farkından, eğim rotanın yükseklik profilinden alınır. Tekerdeki anlık güç
+   (yuvarlanma + hava + eğim + hızlanma) motor verimine bölünür, rölanti/yardımcı sistem gücü eklenir; aynı kalibrasyonla
+   litreye (ya da kWh) çevrilir. Kalan maliyet, planın kalan kısmı × son birkaç kilometredeki "gerçekleşen / planlanan" oranıdır. */
+const LIVE = { on: false };
+function liveFuelStart() {
+  if (dir.mode !== 'car') { LIVE.on = false; return; }
+  Object.assign(LIVE, { on: true, t: 0, along: null, v: null, qty: 0, dist: 0, rate: 0, win: [], factor: 1, startAt: Date.now(), maxV: 0, fastSec: 0, cutSec: 0, sec: 0 });
+  document.body.classList.add('fuel-on');
+}
+function planQtyAt(c, d) {
+  const P = c?.plan; if (!P) return null;
+  const D = P.dists; let lo = 0, hi = D.length - 1;
+  if (d <= D[0]) return 0; if (d >= D[hi]) return P.qty[hi];
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (D[m] <= d) lo = m; else hi = m; }
+  return P.qty[lo] + (P.qty[hi] - P.qty[lo]) * (d - D[lo]) / (D[hi] - D[lo] || 1);
+}
+function liveFuelTick(r, along) {
+  if (!LIVE.on) return;
+  const now = performance.now() / 1000, dt = LIVE.t ? now - LIVE.t : 0;
+  if (LIVE.t && (dt <= 0.2)) return; // aynı anda gelen yinelenen konumlar
+  const prevAlong = LIVE.along; LIVE.t = now; LIVE.along = along;
+  if (!dt || dt > 15 || prevAlong == null || along < prevAlong - 80) { LIVE.win = []; return; } // ilk ölçüm, uzun kesinti ya da rota değişti
+  const body = BODIES[VEH.body], fuel = FUELS[VEH.fuel];
+  const vRaw = Number.isFinite(meSpeed) && meSpeed >= 0 ? meSpeed : Math.max(0, (along - prevAlong) / dt);
+  const vPrev = LIVE.v ?? vRaw, v = vPrev + (vRaw - vPrev) * Math.min(1, dt / 3); // ~3 sn yumuşatma
+  const a = Math.max(-3, Math.min(3, (v - vPrev) / dt)); LIVE.v = v;
+  let grade = 0, elev = 0;
+  // Eğim ±150 m pencereden: ~30 m'lik arazi verisinin köprü/viyadük gürültüsü anlık değeri sallamasın
+  if (r.profile) { const a0 = Math.max(0, along - 150), a1 = Math.min(r.total, along + 150), p0 = profileAt(r.profile, a0), p1 = profileAt(r.profile, a1); grade = a1 > a0 + 50 ? (p1.elev - p0.elev) / (a1 - a0) : 0; elev = (p0.elev + p1.elev) / 2; }
+  const rho = 1.225 * Math.exp(-elev / 8500);
+  const F = body.m * G * body.crr + 0.5 * rho * body.cda * v * v + body.m * G * Math.max(-0.08, Math.min(0.08, grade)) + body.m * a * 1.05; // 1,05: dönen parçaların ataleti
+  const P = F * v, kmh = v * 3.6, eta = fuel.etaLo + (fuel.etaHi - fuel.etaLo) * Math.min(1, kmh / 90);
+  let W;
+  if (P > 0) W = P / eta + fuel.idleKw * 1000;
+  else if (fuel.regen) W = P * fuel.regen * fuel.etaHi + fuel.idleKw * 1000;
+  else W = kmh > 15 ? fuel.idleKw * 150 : fuel.idleKw * 1000; // motor freni: yakıt kesilir
+  const k = avgK(body, fuel), rate = W * k; // birim/sn (negatif olabilir: elektrikte geri kazanım)
+  LIVE.rate = LIVE.rate + (rate - LIVE.rate) * Math.min(1, dt / 5); // gösterge ~5 sn yumuşatılır
+  const dq = rate * dt, dd = v * dt;
+  LIVE.qty += dq; LIVE.dist += dd; LIVE.sec += dt; LIVE.maxV = Math.max(LIVE.maxV, kmh);
+  if (kmh >= 125) LIVE.fastSec += dt; if (P <= 0 && kmh > 15) LIVE.cutSec += dt;
+  // Son ~5 km: gerçekleşen / planlanan
+  const c = routeCost(r), plan = planQtyAt(c, along);
+  LIVE.win.push({ d: dd, q: dq, along, plan });
+  const winDist = () => LIVE.win.reduce((s, x) => s + x.d, 0);
+  while (LIVE.win.length > 2 && winDist() > 5000) LIVE.win.shift();
+  const sd = winDist();
+  const first = LIVE.win[0], last = LIVE.win[LIVE.win.length - 1];
+  if (first.plan != null && last.plan != null && sd > 3000) {
+    const planned = last.plan - first.plan, actual = LIVE.win.reduce((s, x) => s + x.q, 0);
+    if (planned > 0.02) LIVE.factor = LIVE.factor + (Math.max(0.7, Math.min(1.5, actual / planned)) - LIVE.factor) * 0.08;
+  }
+  renderLiveFuel(r, along, c, kmh);
+}
+const avgK = (body, fuel) => vehAvg() / 1e5 / refPerM(body, fuel);
+function liveHint(r, along, kmh) {
+  if (kmh < 118) return '';
+  // Kalan yolun hızlı (otoyol/bölünmüş yol) kısmı: planlanan hızı 85 km/sa üstü adımlar
+  let fastM = 0;
+  for (const s of r.steps || []) { const end = s.at + s.distance; if (end <= along || s.duration <= 0) continue; if (s.distance / s.duration * 3.6 >= 85) fastM += end - Math.max(s.at, along); }
+  if (fastM < 5000) return '';
+  const body = BODIES[VEH.body], fuel = FUELS[VEH.fuel], k = avgK(body, fuel), alt = 110;
+  const per = x => segEnergy(body, fuel, x / 3.6, 1000, 0, 0).e * k / 1000; // birim/m
+  const extra = (per(kmh) - per(alt)) * fastM * unitPrice().v, late = fastM / (alt / 3.6) - fastM / (kmh / 3.6);
+  if (extra < 15) return '';
+  return `Bu hızla kalan ${fmtDist(fastM)} hızlı yolda <b>+${fmtTL(extra)}</b> · ${alt} km/sa ile ~${fmtDur(late)} geç varırsınız`;
+}
+let liveDomAt = 0;
+function renderLiveFuel(r, along, c, kmh) {
+  const el = $('nav-fuel'); if (!el) return;
+  const t = performance.now(); if (t - liveDomAt < 900) return; liveDomAt = t;
+  const u = FUELS[VEH.fuel].unit, price = unitPrice().v, v = LIVE.v || 0;
+  let now, unitTxt, col;
+  if (v < 2) { now = Math.max(0, LIVE.rate * 3600); unitTxt = `${u}/sa`; col = '#9aa0a6'; }
+  else {
+    now = LIVE.rate / v * 1e5; unitTxt = `${u}/100`;
+    const ref = vehAvg(); col = now <= ref * 1.05 ? '#188038' : now <= ref * 1.5 ? '#e37400' : '#d93025';
+  }
+  const spent = Math.max(0, LIVE.qty) * price;
+  const planRem = c?.plan ? Math.max(0, c.qty - planQtyAt(c, along)) : c ? c.qty * Math.max(0, r.total - along) / r.total : null;
+  const rem = planRem != null ? planRem * LIVE.factor * price : null;
+  const hint = liveHint(r, along, kmh);
+  const nowTxt = v >= 2 && LIVE.rate <= 0 ? (FUELS[VEH.fuel].regen ? 'Şarj ediyor' : 'Yakıt kesik') : `${(now < 10 ? nf1 : nf0).format(now)}`;
+  el.hidden = false;
+  el.innerHTML = `<div class="nf-main">
+      <span class="nf-now"><i style="background:${col}"></i><b>${nowTxt}</b>${v >= 2 && LIVE.rate <= 0 ? '' : `<small>${unitTxt}</small>`}</span>
+      <span class="nf-k"><small>Harcanan</small><b>${fmtTL(spent)}</b></span>
+      ${rem != null ? `<span class="nf-k"><small>Kalan</small><b>~${fmtTL(rem)}</b></span>` : ''}
+    </div>${hint ? `<div class="nf-hint">${hint}</div>` : ''}`;
+}
+function liveFuelStop() {
+  const el = $('nav-fuel'); if (el) { el.hidden = true; el.innerHTML = ''; }
+  document.body.classList.remove('fuel-on');
+  if (!LIVE.on) return; LIVE.on = false;
+  if (LIVE.dist < 1000) return;
+  const u = FUELS[VEH.fuel].unit, price = unitPrice().v, km = LIVE.dist / 1000, q = Math.max(0, LIVE.qty);
+  const per = q / km * 100, mins = LIVE.sec / 60;
+  const box = $('nav-sum'); if (!box) return;
+  box.innerHTML = `<div class="ns-h"><span class="ms">local_gas_station</span><b>Yolculuk özeti</b><button class="icon-btn" id="ns-close" aria-label="Kapat"><span class="ms">close</span></button></div>
+    <div class="ns-grid">
+      <span><small>Mesafe</small><b>${fmtDist(LIVE.dist)}</b></span>
+      <span><small>Süre</small><b>${fmtDur(LIVE.sec)}</b></span>
+      <span><small>${FUELS[VEH.fuel].label}</small><b>${fmtQty(q, u)}</b></span>
+      <span><small>Yakıt maliyeti</small><b>${fmtTL(q * price)}</b></span>
+      <span><small>Ortalama</small><b>${nf1.format(per)} ${u}/100</b></span>
+      <span><small>Ortalama hız</small><b>${nf0.format(km / Math.max(1 / 60, mins / 60))} km/sa</b></span>
+    </div>
+    <p class="ns-note">${per <= vehAvg() ? 'Ortalama tüketiminizin altında, ekonomik bir sürüş.' : `Ortalamanızdan %${nf0.format(Math.round((per / vehAvg() - 1) * 100))} fazla.`}${LIVE.fastSec > 60 ? ` ${fmtDur(LIVE.fastSec)} boyunca 125 km/sa üstünde gidildi.` : ''}${LIVE.cutSec > 60 ? ` ${fmtDur(LIVE.cutSec)} motor freniyle (yakıtsız) ilerlendi.` : ''} Değerler GPS ve arazi verisinden tahmindir.</p>`;
+  box.hidden = false;
+  $('ns-close').onclick = () => { box.hidden = true; };
+  clearTimeout(liveFuelStop._t); liveFuelStop._t = setTimeout(() => { box.hidden = true; }, 30000);
 }

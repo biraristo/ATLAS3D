@@ -275,8 +275,8 @@ function renderLiveFuel(r, along, c, kmh) {
   el.hidden = false;
   el.innerHTML = `<div class="nf-main">
       <span class="nf-now"><i style="background:${col}"></i><b>${nowTxt}</b>${v >= 2 && LIVE.rate <= 0 ? '' : `<small>${unitTxt}</small>`}</span>
-      <span class="nf-k"><small>Harcanan</small><b>${fmtTL(spent)}</b></span>
-      ${rem != null ? `<span class="nf-k"><small>Kalan</small><b>~${fmtTL(rem)}</b></span>` : ''}
+      <span class="nf-k"><small>Harcanan yakıt</small><b>${fmtTL(spent)}</b></span>
+      ${rem != null ? `<span class="nf-k"><small>Varışa kadar yakıt</small><b>~${fmtTL(rem)}</b></span>` : ''}
     </div>${hint ? `<div class="nf-hint">${hint}</div>` : ''}`;
 }
 function liveFuelStop() {

@@ -1,7 +1,9 @@
 .git
+.github
 .wrangler
 .gitignore
 .assetsignore
 worker.js
 wrangler.toml
 README.md
+node_modules

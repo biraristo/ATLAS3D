@@ -1,4 +1,4 @@
-// ATLAS3D Haritalar — Google Haritalar tarzı, anahtarsız 3D harita uygulaması
+// ATLAS3D Haritalar — 3D harita, yol tarifi ve rota boyunca rakım–eğim analizi
 // Altyapı: MapLibre GL JS · OpenFreeMap vektör karoları (3D binalar) · AWS Terrain Tiles (3D arazi)
 // Esri World Imagery (uydu) · Photon + Nominatim (arama) · OSRM / routing.openstreetmap.de (yol tarifi)
 'use strict';
@@ -44,7 +44,7 @@ function fmtDur(s) {
 const fmtClock = d => d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
 async function api(path, params, signal) {
   const res = await fetch(path + '?' + new URLSearchParams(params), { signal });
-  if (!res.ok) throw new Error('Sunucu hatası (' + res.status + ')');
+  if (!res.ok) throw new Error(res.status === 429 ? 'Çok fazla istek; birkaç saniye sonra tekrar deneyin.' : 'Sunucu hatası (' + res.status + ')');
   return res.json();
 }
 
@@ -105,6 +105,11 @@ const TR_VIEW = { center: [35.2, 39.0], zoom: 5.2, pitch: 0, bearing: 0 };
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services';
 const TERRARIUM = ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'];
 const EXAG = 1.2;
+// Yüksek çözünürlüklü ekranlarda (retina) 256 px raster karolar iki kat büyütülüp bulanık görünür.
+// Karo boyutunu 128 bildirmek MapLibre'nin bir üst yakınlaştırma düzeyini istemesini sağlar: ekran pikseli başına bir görüntü pikseli.
+const HIDPI = (devicePixelRatio || 1) >= 1.5, RASTER_TS = HIDPI ? 128 : 256;
+// Gölgelendirme: kırsalda belirgin, şehir ölçeğinde (z15+) bulanık leke bırakmaması için azalarak kaybolur
+const HS_EXAG = k => ['interpolate', ['linear'], ['zoom'], 10, k, 14, k * 0.6, 16, k * 0.15, 17, 0];
 const OWN = new Set(); // bizim eklediğimiz katmanlar
 let styleLayerIds = [], baseVisibility = {};
 let basemap = store.get('basemap', 'terrain'); if (basemap !== 'satellite') basemap = 'terrain'; // harita = arazi görünümü
@@ -127,14 +132,14 @@ async function buildStyle() {
   }
   Object.assign(style.sources, {
     dem: { type: 'raster-dem', encoding: 'terrarium', tiles: TERRARIUM, tileSize: 256, maxzoom: 13 },
-    hsdem: { type: 'raster-dem', encoding: 'terrarium', tiles: TERRARIUM, tileSize: 256, maxzoom: 12 },
-    sat: { type: 'raster', tiles: [`${ESRI}/World_Imagery/MapServer/tile/{z}/{y}/{x}`], tileSize: 256, maxzoom: 19, attribution: 'Uydu © Esri, Maxar, Earthstar Geographics' },
-    satroads: { type: 'raster', tiles: [`${ESRI}/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}`], tileSize: 256, maxzoom: 19 }
+    hsdem: { type: 'raster-dem', encoding: 'terrarium', tiles: TERRARIUM, tileSize: 256, maxzoom: 14 },
+    sat: { type: 'raster', tiles: [`${ESRI}/World_Imagery/MapServer/tile/{z}/{y}/{x}`], tileSize: RASTER_TS, maxzoom: 19, attribution: 'Uydu © Esri, Maxar, Earthstar Geographics' },
+    satroads: { type: 'raster', tiles: [`${ESRI}/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}`], tileSize: 256, maxzoom: 19 } // yazılı katman: küçülmesin diye 256
   });
   const firstLine = style.layers.find(l => l.type === 'line')?.id;
   const firstSymbol = style.layers.find(l => l.type === 'symbol')?.id;
   const insert = (layer, before) => { const i = style.layers.findIndex(l => l.id === before); style.layers.splice(i < 0 ? style.layers.length : i, 0, layer); OWN.add(layer.id); };
-  insert({ id: 'a3-hillshade', type: 'hillshade', source: 'hsdem', paint: { 'hillshade-exaggeration': 0.25, 'hillshade-shadow-color': '#5a5040', 'hillshade-highlight-color': '#ffffff', 'hillshade-accent-color': '#5a5040' } }, firstLine);
+  insert({ id: 'a3-hillshade', type: 'hillshade', source: 'hsdem', paint: { 'hillshade-exaggeration': HS_EXAG(0.75), 'hillshade-shadow-color': '#5a5040', 'hillshade-highlight-color': '#ffffff', 'hillshade-accent-color': '#5a5040' } }, firstLine);
   insert({ id: 'a3-sat', type: 'raster', source: 'sat', layout: { visibility: 'none' } }, firstSymbol);
   insert({ id: 'a3-satroads', type: 'raster', source: 'satroads', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.85 } }, firstSymbol);
   if (opts.terrain) style.terrain = { source: 'dem', exaggeration: EXAG }; else delete style.terrain;
@@ -152,12 +157,14 @@ const savedView = initialView();
 buildStyle().then(style => {
   map = new maplibregl.Map({
     container: 'map', style, hash: true, ...(savedView || TR_VIEW),
-    maxPitch: 80, pixelRatio: Math.min(devicePixelRatio || 1, 2), fadeDuration: 120,
+    maxPitch: 80, pixelRatio: Math.min(devicePixelRatio || 1, 3), fadeDuration: 120,
     attributionControl: { compact: true }, cancelPendingTileRequestsWhileZooming: true
   });
   map.addControl(new maplibregl.ScaleControl({ unit: 'metric', maxWidth: 90 }), 'bottom-right');
   map.on('load', onMapLoad);
   map.on('error', e => console.warn('Harita:', e.error?.message || e));
+  // OpenFreeMap sprite'ında olmayan birkaç POI simgesi (atm, office, gate…): boş görsel ver, uyarı ve yeniden deneme olmasın
+  map.on('styleimagemissing', e => { if (!map.hasImage(e.id)) map.addImage(e.id, { width: 1, height: 1, data: new Uint8Array(4) }); });
   wireMap();
   // İlk açılışta ziyaretçinin yaklaşık konumuna aç (URL'de veya kayıtlı görünüm yoksa)
   if (!savedView && !location.hash && !/[?&](p|to|action)=/.test(location.search)) {
@@ -203,15 +210,14 @@ function applyBasemap() {
   map.setLayoutProperty('a3-sat', 'visibility', sat ? 'visible' : 'none');
   map.setLayoutProperty('a3-satroads', 'visibility', sat && opts.labels ? 'visible' : 'none');
   map.setLayoutProperty('a3-hillshade', 'visibility', sat ? 'none' : 'visible');
-  map.setPaintProperty('a3-hillshade', 'hillshade-exaggeration', basemap === 'terrain' ? 0.75 : 0.22);
-  // Katman düğmesinde "diğer" seçenek görünür (Google gibi)
+  map.setPaintProperty('a3-hillshade', 'hillshade-exaggeration', HS_EXAG(0.75));
+  // Katman düğmesinde "diğer" seçenek görünür
   const other = sat ? 'terrain' : 'satellite';
   $('layers-thumb').style.backgroundImage = `url(${BASEMAPS[other].thumb})`;
   $('layers-btn').dataset.other = other;
   document.querySelectorAll('.bm').forEach(b => { b.classList.toggle('on', b.dataset.id === basemap); b.setAttribute('aria-checked', b.dataset.id === basemap); });
 }
 function setBasemap(id) {
-  if (id === 'google') { openGoogle3D(); return; }
   basemap = id; store.set('basemap', id); applyBasemap();
 }
 const BM_ICON = { terrain: 'landscape', satellite: 'satellite_alt' };
@@ -794,7 +800,6 @@ function renderPlace(el, p) {
   $('pl-near').onclick = () => { map.easeTo({ center: [p.lon, p.lat], zoom: Math.max(map.getZoom(), 15), padding: mapPadding() }); map.once('moveend', () => nearby(NEARBY[0])); };
   $('pl-share').onclick = () => share(p.name, placeUrl(p));
   el.querySelectorAll('[data-copy]').forEach(r => { r.onclick = () => copy(r.dataset.copy); });
-  if (typeof gEnrich === 'function') gEnrich(el, p);
 }
 function placeUrl(p) {
   const u = new URL(location.origin + '/');
@@ -892,7 +897,7 @@ function wireMap() {
       else map.easeTo({ center: ll, padding: mapPadding(), duration: 600 });
       return;
     }
-    // Boş noktaya tıklama: Google gibi açık kart kapanır; kart yoksa nokta işaretlenir
+    // Boş noktaya tıklama: açık kart kapanır; kart yoksa nokta işaretlenir
     if (panelMode === 'dir') return;
     if (panelMode === 'place' || panelMode === 'list') { if (panelMode === 'place' && viewStack.length > 1) goBack(); else closePanel(); return; }
     showPlace({ name: 'İşaretlenmiş konum', lat: e.lngLat.lat, lon: e.lngLat.lng, icon: 'pin_drop', needsReverse: true }, { fly: false });
@@ -1485,14 +1490,15 @@ $('drawer').onclick = e => {
   if (a === 'mylocation') locateMe();
   if (a === 'install') installApp();
   if (a === 'share') share('ATLAS3D Haritalar', location.href);
-  if (a === 'about') openPanel(el => { el.innerHTML = `<div class="list-head drag-zone"><h2>Veri kaynakları</h2><small>Tüm servisler anahtarsız ve ücretsizdir</small></div>
+  if (a === 'about') openPanel(el => { el.innerHTML = `<div class="list-head drag-zone"><h2>Veri kaynakları</h2><small>Açık veri ve ücretsiz servisler</small></div>
     <div class="info">
       <div class="info-row"><span class="ms">map</span><span>Harita ve 3D binalar: OpenFreeMap · © OpenMapTiles · © OpenStreetMap katkıda bulunanlar</span></div>
       <div class="info-row"><span class="ms">satellite_alt</span><span>Uydu: Esri, Maxar, Earthstar Geographics</span></div>
       <div class="info-row"><span class="ms">landscape</span><span>3D arazi: AWS Terrain Tiles (Mapzen)</span></div>
-      <div class="info-row"><span class="ms">search</span><span>Arama: Photon (Komoot) ve Nominatim</span></div>
+      <div class="info-row"><span class="ms">search</span><span>Arama: Photon (Komoot) ve Nominatim${cfg.mapbox ? ' · adres önerileri © Mapbox' : ''}</span></div>
       <div class="info-row"><span class="ms">directions</span><span>Yol tarifi: OSRM · routing.openstreetmap.de (FOSSGIS)</span></div>
-      <div class="info-row"><span class="ms">info</span><span>Canlı trafik, işletme yorumları/fotoğrafları ve sokak görünümü bu açık kaynaklarda bulunmaz.</span></div>
+      ${cfg.traffic ? '<div class="info-row"><span class="ms">traffic</span><span>Canlı trafik, trafiğe göre rotalar ve ücretsiz yol seçeneği: TomTom</span></div>' : ''}
+      <div class="info-row"><span class="ms">toll</span><span>Köprü ve otoyol ücretleri: KGM 2026 tarifeleri</span></div>
     </div>`; }, { mode: 'list' });
 };
 
@@ -1513,33 +1519,7 @@ function handleUrlParams() {
   if (location.search) history.replaceState(null, '', location.pathname + location.hash);
 }
 
-/* ================= İsteğe bağlı: Google Photorealistic 3D (GOOGLE_MAPS_API_KEY tanımlıysa) ================= */
-let gViewer = null;
-function addGoogleBasemap() { BASEMAPS.google = { label: 'Google 3D', thumb: BASEMAPS.satellite.thumb }; renderLayerPop(); applyBasemap(); }
 function loadScript(src) { return new Promise((ok, fail) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = fail; document.head.appendChild(s); }); }
-async function openGoogle3D() {
-  let box = $('g3d');
-  if (!box) {
-    box = makeEl('<div id="g3d" style="position:fixed;inset:0;z-index:28;background:#000"><button class="ctrl" id="g3d-close" style="position:absolute;z-index:2;top:calc(12px + var(--safe-t));right:12px" aria-label="Kapat"><span class="ms">close</span></button><div id="g3d-view" style="position:absolute;inset:0"></div></div>');
-    document.body.appendChild(box); $('g3d-close').onclick = () => { box.hidden = true; };
-  }
-  box.hidden = false;
-  try {
-    if (!window.Cesium) {
-      toast('Google 3D yükleniyor…', 4000);
-      const base = 'https://cesium.com/downloads/cesiumjs/releases/1.131/Build/Cesium/';
-      const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = base + 'Widgets/widgets.css'; document.head.appendChild(l);
-      await loadScript(base + 'Cesium.js');
-    }
-    if (!gViewer) {
-      gViewer = new Cesium.Viewer('g3d-view', { globe: false, baseLayer: false, animation: false, timeline: false, geocoder: false, homeButton: false, sceneModePicker: false, navigationHelpButton: false, infoBox: false, selectionIndicator: false, fullscreenButton: false, baseLayerPicker: false });
-      // Karolar sunucumuz üzerinden gelir; Google anahtarı tarayıcıya hiç inmez
-      gViewer.scene.primitives.add(await Cesium.Cesium3DTileset.fromUrl(location.origin + '/v1/3dtiles/root.json', { showCreditsOnScreen: true }));
-    }
-    const c = map.getCenter();
-    gViewer.camera.flyTo({ destination: Cesium.Cartesian3.fromDegrees(c.lng, c.lat, 1200), orientation: { heading: Cesium.Math.toRadians(map.getBearing()), pitch: Cesium.Math.toRadians(-40), roll: 0 }, duration: 1.2 });
-  } catch (e) { box.hidden = true; toast('Google 3D açılamadı: ' + (e.message || e), 6000); }
-}
 
 /* ================= Telefona uygulama olarak kurulum (PWA) ================= */
 let installEvt = null;

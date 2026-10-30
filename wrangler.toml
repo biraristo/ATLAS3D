@@ -6,3 +6,21 @@ keep_vars = true
 [assets]
 directory = "."
 binding = "ASSETS"
+
+# IP başına hız sınırı (kötüye kullanım ve kota koruması). Mobil operatörlerde birçok kullanıcı aynı IP’yi paylaştığı için cömert tutuldu; period yalnızca 10 veya 60 olabilir.
+[[ratelimits]]
+name = "API_LIMIT"
+namespace_id = "3301"
+
+  [ratelimits.simple]
+  limit = 300
+  period = 60
+
+# Trafik karoları harita gezinirken çok sayıda istenir; ayrı ve daha geniş sınır
+[[ratelimits]]
+name = "TILE_LIMIT"
+namespace_id = "3302"
+
+  [ratelimits.simple]
+  limit = 1500
+  period = 60

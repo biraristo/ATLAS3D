@@ -1,11 +1,12 @@
-// ATLAS3D Cloudflare Worker — anahtarsız harita servisleri için önbellekli API katmanı
-//   /api/autocomplete  Photon (yazarken öneri)
+// ATLAS3D Cloudflare Worker — harita servisleri için önbellekli, hız sınırlı API katmanı
+//   /api/autocomplete  Photon (+ MAPBOX_TOKEN varsa Mapbox adresleri)
 //   /api/search        Nominatim (tam arama)
 //   /api/reverse       Nominatim (koordinattan adres)
 //   /api/lookup        Nominatim (OSM nesne detayı: telefon, web, saatler)
 //   /api/route         OSRM (araç / yürüyüş / bisiklet rota)
 //   /api/nearby        Nominatim (harita alanında kategori araması)
-//   /api/config        isteğe bağlı anahtarlar + ziyaretçinin yaklaşık konumu (Cloudflare)
+//   /api/traffic/*     TomTom (TOMTOM_API_KEY varsa): trafik karoları, trafikli rota, ulaşılabilir alan
+//   /api/config        özellik bayrakları + ziyaretçinin yaklaşık konumu (Cloudflare)
 //   /api/health        durum
 const UA = 'ATLAS3D/2.0 (+https://github.com/biraristo/ATLAS3D)';
 const NOMINATIM = 'https://nominatim.openstreetmap.org';
@@ -20,7 +21,7 @@ async function cachedFetch(upstream, ttl, ctx, origin) {
   const hit = await cache.match(key);
   if (hit) return hit;
   const r = await fetch(upstream, { headers: { 'User-Agent': UA, 'Referer': origin + '/', 'Accept': 'application/json', 'Accept-Language': 'tr' } });
-  if (!r.ok) return json({ error: 'upstream ' + r.status }, 502);
+  if (!r.ok) return json({ error: 'upstream ' + r.status }, r.status === 429 ? 503 : 502);
   const res = new Response(await r.text(), {
     headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=' + ttl }
   });
@@ -54,7 +55,7 @@ const routes = {
     const ids = clean(p.get('osm_ids')); if (!/^[NWR]\d+$/.test(ids)) return json([], 400);
     return cachedFetch(`${NOMINATIM}/lookup?format=jsonv2&addressdetails=1&extratags=1&namedetails=1&accept-language=tr&osm_ids=${ids}`, 604800, ctx, origin);
   },
-  async '/api/route'(p, ctx, origin) {
+  async '/api/route'(p, ctx, origin, env) {
     const svc = { car: 'routed-car', foot: 'routed-foot', bike: 'routed-bike' }[p.get('mode')];
     const c = (p.get('coords') || '').split(';').map(s => s.split(',').map(v => num(v, 6)));
     if (!svc || c.length !== 2 || c.some(x => x.length !== 2 || x.includes(null))) return json({ error: 'params' }, 400);
@@ -72,7 +73,9 @@ const routes = {
     const main = await get(c);
     if (!main) return json({ code: lastErr === 'NoRoute' ? 'NoRoute' : 'Error', message: lastErr, routes: [] }, lastErr === 'NoRoute' ? 200 : 502);
     const routes = main.routes.slice(0, 3);
-    if (routes.length < 3) {
+    // Araçta TomTom bağlıysa alternatifleri o verir; topluluk OSRM sunucusunu ara nokta denemeleriyle yorma
+    const viaSearch = !(svc === 'routed-car' && env?.TOMTOM_API_KEY);
+    if (viaSearch && routes.length < 3) {
       // Ücretsiz OSRM uzun yolda nadiren alternatif verir: düz çizginin iki yanına ara noktalar koyup farklı güzergâhlar ara
       const [A, B] = c.map(x => x.map(Number)), lat0 = (A[1] + B[1]) / 2 * Math.PI / 180, kx = Math.cos(lat0);
       const dx = (B[0] - A[0]) * kx, dy = B[1] - A[1], L = Math.hypot(dx, dy) || 1e-9, nx = -dy / L, ny = dx / L;
@@ -106,7 +109,8 @@ const routes = {
         r.viaAlt = true; routes.push(r); accepted.push(cellSet(co, 0.0012));
       };
       // Topluluk sunucusunu yormamak için ara noktaları önem sırasıyla üçerli gruplar halinde dene; yeterli alternatif bulununca dur
-      for (let k = 0; k < vias.length && routes.length < 3 && !busy; k += 3) {
+      // En fazla iki grup (6 ara nokta) denenir; istek sayısı tek rota başına sınırlı kalır
+      for (let k = 0; k < 6 && routes.length < 3 && !busy; k += 3) {
         const got = (await Promise.all(vias.slice(k, k + 3).map(v => get([A, v, B]).catch(() => null)))).filter(Boolean).map(d => ({ r: d.routes[0], via: d.waypoints?.[1]?.location }));
         // Sapmalı adayı, sapmanın hemen öncesindeki (ana güzergâh üzerindeki) noktadan geçecek şekilde yeniden iste
         const fixes = await Promise.all(got.map(cnd => { const j = spurAt(cnd.r.geometry.coordinates, cnd.via); return j >= 0 && !busy ? get([A, cnd.r.geometry.coordinates[Math.max(0, j - 2)], B]).catch(() => null) : cnd; }));
@@ -127,84 +131,6 @@ const routes = {
   }
 };
 
-
-/* ================= Canlı trafik (TomTom) =================
-   Anahtar (TOMTOM_API_KEY) yalnızca Cloudflare'de gizli değişken olarak tutulur, tarayıcıya gitmez.
-   /api/traffic/flow/{z}/{x}/{y}.png        trafik akış karosu (2 dk önbellek)
-   /api/traffic/incidents/{z}/{x}/{y}.png   kaza / yol çalışması karosu (2 dk önbellek)
-   POST /api/traffic/route  { points: [[lon,lat],...] }  → güzergâhın trafikli süresi ve sıkışık kesimleri */
-// Google: yer ayrıntıları (puan, saatler, fotoğraflar), sokak görünümü ve fotogerçekçi 3D karolar — anahtar yalnızca sunucuda
-async function google(request, url, env, ctx) {
-  const key = env.GOOGLE_MAPS_API_KEY, p = url.searchParams;
-  // Anahtar web sitesi (HTTP referrer) kısıtlamalıysa sunucudan gelen isteklerin de sitemizden geldiği belirtilmeli
-  const H = { 'Referer': url.origin + '/' };
-  const cached = async (ck, make, ttl) => {
-    const k = new Request('https://atlas3d.cache/g/' + ck), hit = await caches.default.match(k); if (hit) return hit;
-    const res = await make(); if (!res.ok) return res;
-    const out = new Response(res.body, { status: 200, headers: { 'content-type': res.headers.get('content-type') || 'application/json; charset=utf-8', 'cache-control': 'public, max-age=' + ttl } });
-    ctx.waitUntil(caches.default.put(k, out.clone()));
-    return out;
-  };
-  const gerr = async r => json({ error: 'google ' + r.status, detail: (await r.text()).slice(0, 400).replace(key, '***') }, r.status === 429 ? 429 : 502);
-  // Fotogerçekçi 3D karolar: Cesium tüm istekleri buraya yapar, anahtarı biz ekleriz
-  if (url.pathname.startsWith('/v1/3dtiles/')) {
-    const q = new URLSearchParams(url.search); q.set('key', key);
-    const r = await fetch('https://tile.googleapis.com' + url.pathname + '?' + q, { headers: H });
-    return new Response(r.body, { status: r.status, headers: { 'content-type': r.headers.get('content-type') || 'application/octet-stream', 'cache-control': r.ok ? 'public, max-age=3600' : 'no-store' } });
-  }
-  if (url.pathname === '/api/google/place') {
-    const q = clean(p.get('q')), lat = +p.get('lat'), lon = +p.get('lon');
-    if (!q || !Number.isFinite(lat) || !Number.isFinite(lon)) return json({ error: 'params' }, 400);
-    return cached(`place/${encodeURIComponent(q.toLowerCase())}/${lat.toFixed(4)},${lon.toFixed(4)}`, async () => {
-      const r = await fetch('https://places.googleapis.com/v1/places:searchText', {
-        method: 'POST',
-        headers: { ...H, 'content-type': 'application/json', 'X-Goog-Api-Key': key,
-          'X-Goog-FieldMask': 'places.id,places.displayName,places.location,places.rating,places.userRatingCount,places.priceLevel,places.primaryTypeDisplayName,places.nationalPhoneNumber,places.websiteUri,places.googleMapsUri,places.currentOpeningHours.openNow,places.regularOpeningHours.weekdayDescriptions,places.photos,places.businessStatus,places.editorialSummary' },
-        body: JSON.stringify({ textQuery: q, languageCode: 'tr', regionCode: 'TR', maxResultCount: 3, locationBias: { circle: { center: { latitude: lat, longitude: lon }, radius: 300 } } })
-      });
-      if (!r.ok) return gerr(r);
-      const d = await r.json();
-      const dist = pl => { const a = pl.location || {}; const dx = (a.longitude - lon) * 111320 * Math.cos(lat * Math.PI / 180), dy = (a.latitude - lat) * 110540; return Math.hypot(dx, dy); };
-      const pl = (d.places || []).filter(x => dist(x) < 350).sort((a, b) => dist(a) - dist(b))[0];
-      if (!pl) return json({ found: false }, 200, 'public, max-age=604800');
-      return json({
-        found: true, id: pl.id, name: pl.displayName?.text, rating: pl.rating ?? null, count: pl.userRatingCount ?? 0, price: pl.priceLevel || null,
-        type: pl.primaryTypeDisplayName?.text || '', phone: pl.nationalPhoneNumber || '', web: pl.websiteUri || '', url: pl.googleMapsUri || '',
-        openNow: pl.currentOpeningHours?.openNow ?? null, hours: pl.regularOpeningHours?.weekdayDescriptions || [], status: pl.businessStatus || '',
-        summary: pl.editorialSummary?.text || '',
-        photos: (pl.photos || []).slice(0, 8).map(ph => ({ n: ph.name, by: ph.authorAttributions?.[0]?.displayName || '', byUrl: ph.authorAttributions?.[0]?.uri || '' }))
-      }, 200);
-    }, 604800);
-  }
-  if (url.pathname === '/api/google/photo') {
-    const n = p.get('n') || '', w = Math.max(100, Math.min(1200, +p.get('w') || 480));
-    if (!/^places\/[\w-]+\/photos\/[\w-]+$/.test(n)) return json({ error: 'photo' }, 400);
-    return cached(`photo/${n}/${w}`, async () => {
-      const r = await fetch(`https://places.googleapis.com/v1/${n}/media?maxWidthPx=${w}&key=${key}`, { headers: H });
-      return r.ok ? r : gerr(r);
-    }, 2592000);
-  }
-  if (url.pathname === '/api/google/sv') {
-    const lat = +p.get('lat'), lon = +p.get('lon'); if (!Number.isFinite(lat) || !Number.isFinite(lon)) return json({ error: 'params' }, 400);
-    return cached(`sv/${lat.toFixed(5)},${lon.toFixed(5)}`, async () => {
-      const r = await fetch(`https://maps.googleapis.com/maps/api/streetview/metadata?location=${lat},${lon}&radius=80&source=outdoor&key=${key}`, { headers: H });
-      if (!r.ok) return gerr(r);
-      const d = await r.json();
-      if (d.status !== 'OK') return json({ ok: false, status: d.status, detail: (d.error_message || '').replace(key, '***') }, d.status === 'ZERO_RESULTS' || d.status === 'NOT_FOUND' ? 200 : 502);
-      const a = d.location || {}, y = Math.sin((lon - a.lng) * Math.PI / 180) * Math.cos(lat * Math.PI / 180), x = Math.cos(a.lat * Math.PI / 180) * Math.sin(lat * Math.PI / 180) - Math.sin(a.lat * Math.PI / 180) * Math.cos(lat * Math.PI / 180) * Math.cos((lon - a.lng) * Math.PI / 180);
-      return json({ ok: true, pano: d.pano_id, lat: a.lat, lon: a.lng, heading: Math.round((Math.atan2(y, x) * 180 / Math.PI + 360) % 360), date: d.date || '' }, 200);
-    }, 2592000);
-  }
-  if (url.pathname === '/api/google/svimg') {
-    const pano = p.get('pano') || '', h = Math.round(+p.get('h') || 0) % 360;
-    if (!/^[\w-]{10,80}$/.test(pano)) return json({ error: 'pano' }, 400);
-    return cached(`svimg/${pano}/${h}`, async () => {
-      const r = await fetch(`https://maps.googleapis.com/maps/api/streetview?size=640x320&pano=${pano}&heading=${h}&pitch=0&fov=90&key=${key}`, { headers: H });
-      return r.ok ? r : gerr(r);
-    }, 2592000);
-  }
-  return json({ error: 'not-found' }, 404);
-}
 
 // Yazarken öneri: Photon (mekanlar, OSM) + Mapbox (adres, sokak, kapı numarası) birlikte
 const MB_TYPE = { address: 'house', street: 'street', neighborhood: 'suburb', locality: 'suburb', place: 'city', district: 'county', region: 'state', postcode: 'postcode', country: 'country' };
@@ -292,6 +218,11 @@ function ttToOsrm(rt, avoid) {
   };
 }
 
+/* ================= Canlı trafik (TomTom) =================
+   Anahtar (TOMTOM_API_KEY) yalnızca Cloudflare'de gizli değişken olarak tutulur, tarayıcıya gitmez.
+   /api/traffic/flow/{z}/{x}/{y}.png        trafik akış karosu (2 dk önbellek)
+   /api/traffic/incidents/{z}/{x}/{y}.png   kaza / yol çalışması karosu (2 dk önbellek)
+   POST /api/traffic/route  { points: [[lon,lat],...] }  → güzergâhın trafikli süresi ve sıkışık kesimleri */
 async function traffic(request, url, env, ctx) {
   const key = env.TOMTOM_API_KEY;
   if (!key) return json({ error: 'traffic-disabled' }, 404);
@@ -306,7 +237,7 @@ async function traffic(request, url, env, ctx) {
       ? `${base}/traffic/map/4/tile/flow/relative0/${z}/${x}/${y}.png?tileSize=256&key=${key}`
       : `${base}/traffic/map/4/tile/incidents/s3/${z}/${x}/${y}.png?tileSize=256&key=${key}`;
     const r = await fetch(up);
-    if (!r.ok) { const t = (await r.text()).slice(0, 300).replace(key, '***'); return new Response(null, { status: r.status === 403 || r.status === 429 ? 204 : 502, headers: { 'x-upstream': r.status + ' ' + t.replace(/[^\x20-\x7e]/g, ' ') } }); }
+    if (!r.ok) { const t = (await r.text()).slice(0, 300).replaceAll(key, '***'); return new Response(null, { status: r.status === 403 || r.status === 429 ? 204 : 502, headers: { 'x-upstream': r.status + ' ' + t.replace(/[^\x20-\x7e]/g, ' ') } }); }
     const res = new Response(r.body, { headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=120' } });
     ctx.waitUntil(caches.default.put(cacheKey, res.clone()));
     return res;
@@ -321,7 +252,7 @@ async function traffic(request, url, env, ctx) {
     const a = pts[0], b = pts[pts.length - 1];
     const up = `${base}/routing/1/calculateRoute/${a[1]},${a[0]}:${b[1]},${b[0]}/json?key=${key}&traffic=true&travelMode=car&sectionType=traffic&computeTravelTimeFor=all&routeRepresentation=polyline`;
     const r = await fetch(up, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ supportingPoints: pts.map(p => ({ latitude: p[1], longitude: p[0] })) }) });
-    if (!r.ok) return json({ error: 'upstream ' + r.status, detail: (await r.text()).slice(0, 400).replace(key, '***') }, r.status === 429 ? 429 : 502);
+    if (!r.ok) return json({ error: 'upstream ' + r.status, detail: (await r.text()).slice(0, 400).replaceAll(key, '***') }, r.status === 429 ? 429 : 502);
     const d = await r.json(), route = d.routes?.[0];
     if (!route) return json({ error: 'no-route' }, 502);
     const points = (route.legs || []).flatMap(l => l.points || []).map(p => [p.longitude, p.latitude]);
@@ -349,7 +280,7 @@ async function traffic(request, url, env, ctx) {
     const up = `${base}/routing/1/calculateRoute/${c[0][1]},${c[0][0]}:${c[1][1]},${c[1][0]}/json?key=${key}&traffic=true&travelMode=car&maxAlternatives=${alts}` +
       `&instructionsType=coded&sectionType=traffic&sectionType=tollRoad&computeTravelTimeFor=all&routeRepresentation=polyline${avoid ? '&avoid=tollRoads' : ''}`;
     const r = await fetch(up);
-    if (!r.ok) return json({ code: 'Error', error: 'upstream ' + r.status, detail: (await r.text()).slice(0, 300).replace(key, '***') }, r.status === 429 ? 429 : 502);
+    if (!r.ok) return json({ code: 'Error', error: 'upstream ' + r.status, detail: (await r.text()).slice(0, 300).replaceAll(key, '***') }, r.status === 429 ? 429 : 502);
     const d = await r.json();
     const out = { code: 'Ok', routes: (d.routes || []).map(rt => ttToOsrm(rt, avoid)) };
     const res = new Response(JSON.stringify(out), { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=120' } });
@@ -364,7 +295,7 @@ async function traffic(request, url, env, ctx) {
     const hit = await caches.default.match(cacheKey); if (hit) return hit;
     const up = `${base}/routing/1/calculateReachableRange/${lat},${lon}/json?key=${key}&timeBudgetInSec=${min * 60}&traffic=true&travelMode=car`;
     const r = await fetch(up);
-    if (!r.ok) return json({ error: 'upstream ' + r.status, detail: (await r.text()).slice(0, 300).replace(key, '***') }, r.status === 429 ? 429 : 502);
+    if (!r.ok) return json({ error: 'upstream ' + r.status, detail: (await r.text()).slice(0, 300).replaceAll(key, '***') }, r.status === 429 ? 429 : 502);
     const d = await r.json();
     const ring = (d.reachableRange?.boundary || []).map(p => [p.longitude, p.latitude]);
     if (ring.length) ring.push(ring[0]);
@@ -375,21 +306,33 @@ async function traffic(request, url, env, ctx) {
   return json({ error: 'not-found' }, 404);
 }
 
+// Kötüye kullanım koruması: başka sitelerin tarayıcıdan API'mizi çağırmasını engelle ve IP başına hız sınırı uygula.
+// Sınırlayıcılar wrangler.toml'daki [[ratelimits]] bağlarından gelir; tanımlı değilse sınır uygulanmaz.
+const crossSite = request => request.headers.get('sec-fetch-site') === 'cross-site';
+async function overLimit(request, env, url) {
+  const tile = url.pathname.startsWith('/api/traffic/') && url.pathname.endsWith('.png');
+  const limiter = tile ? env.TILE_LIMIT : env.API_LIMIT;
+  if (!limiter?.limit) return false;
+  const ip = request.headers.get('cf-connecting-ip') || 'anon';
+  try { const { success } = await limiter.limit({ key: ip }); return !success; } catch { return false; }
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname === '/api/health') {
-      return json({ status: 'ok', keylessMode: true, runtimeGoogleKeyConfigured: Boolean(env.GOOGLE_MAPS_API_KEY), runtimeMaptilerKeyConfigured: Boolean(env.MAPTILER_API_KEY), trafficConfigured: Boolean(env.TOMTOM_API_KEY), mapboxConfigured: Boolean(env.MAPBOX_TOKEN) });
+      return json({ status: 'ok', traffic: Boolean(env.TOMTOM_API_KEY), mapbox: Boolean(env.MAPBOX_TOKEN), rateLimit: Boolean(env.API_LIMIT?.limit) });
     }
     if (url.pathname === '/api/config') {
       const cf = request.cf || {};
       return json({
-        maptilerKey: env.MAPTILER_API_KEY || '', google: Boolean(env.GOOGLE_MAPS_API_KEY), traffic: Boolean(env.TOMTOM_API_KEY),
+        traffic: Boolean(env.TOMTOM_API_KEY), mapbox: Boolean(env.MAPBOX_TOKEN),
         ip: cf.latitude && cf.longitude ? { lat: Number(cf.latitude), lon: Number(cf.longitude), city: cf.city || '' } : null
       });
     }
-    if ((url.pathname.startsWith('/api/google/') || url.pathname.startsWith('/v1/3dtiles/')) && env.GOOGLE_MAPS_API_KEY) {
-      try { return await google(request, url, env, ctx); } catch (e) { return json({ error: String(e.message || e) }, 502); }
+    if (url.pathname.startsWith('/api/')) {
+      if (crossSite(request)) return json({ error: 'forbidden' }, 403);
+      if (await overLimit(request, env, url)) return new Response(JSON.stringify({ error: 'rate-limited' }), { status: 429, headers: { 'content-type': 'application/json; charset=utf-8', 'retry-after': '30', 'cache-control': 'no-store' } });
     }
     if (url.pathname === '/api/autocomplete' && env.MAPBOX_TOKEN) {
       try { return await mergedAutocomplete(url.searchParams, env, ctx, url.origin); } catch (e) { /* aşağıdaki Photon'a düş */ }
@@ -400,9 +343,10 @@ export default {
     }
     const handler = routes[url.pathname];
     if (handler) {
-      try { return await handler(url.searchParams, ctx, url.origin); }
+      try { return await handler(url.searchParams, ctx, url.origin, env); }
       catch (e) { return json({ error: String(e.message || e) }, 502); }
     }
+    if (url.pathname.startsWith('/api/')) return json({ error: 'not-found' }, 404);
     return env.ASSETS.fetch(request);
   }
 };

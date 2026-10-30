@@ -220,21 +220,26 @@ function mergeTomTomRoutes(tt, ctrl, mode, a, b) {
   if (!tt || ctrl !== routeCtrl || dir.mode !== mode || navActive || !dir.routes.length) return;
   const add = [], all = () => [...dir.routes, ...add];
   const differs = (r, lim) => all().every(x => trOverlap(x, r) < lim);
-  for (const raw of tt.main) {
-    if (all().length >= 5) break;
-    const r = prepRoute(raw);
-    if (r.total > 1.6 * Math.min(...dir.routes.map(x => x.total))) continue;
-    if (differs(r, 0.8)) add.push(r);
-  }
+  const tt0 = r => r.traffic?.travel ?? r.duration;
+  // Önce ücretli yol içermeyen rota (mevcutların hepsi ücretliyse)
   let freeAdded = false;
   if (tt.free[0] && !all().some(x => x.tolls && x.tolls.total === 0)) {
     const r = prepRoute(tt.free[0]);
-    if ((!r.tolls || r.tolls.total === 0) && differs(r, 0.97)) { add.push(r); freeAdded = true; }
+    if (r.tolls) r.tolls = { ...r.tolls, total: 0, items: [] }; // TomTom ücretli yollardan kaçındı
+    if (differs(r, 0.97)) { add.push(r); freeAdded = true; }
+  }
+  // Sonra trafiğe göre farklı yol: yalnızca gerçekten rekabetçiyse (en hızlıdan en fazla %15 yavaş)
+  const best = Math.min(...dir.routes.map(tt0), ...tt.main.map(x => x.traffic?.travel ?? Infinity));
+  let n = 0;
+  for (const raw of tt.main) {
+    if (all().length >= 5) break;
+    if ((raw.traffic?.travel ?? Infinity) > best * 1.15) continue;
+    const r = prepRoute(raw);
+    if (differs(r, 0.8)) { add.push(r); n++; }
   }
   if (!add.length) return;
   dir.routes = [...dir.routes, ...add];
   drawRoutes(); setRouteMarkers(a, b); loadProfiles();
-  const n = add.length - (freeAdded ? 1 : 0);
   toast([n ? `Trafiğe göre ${n} rota daha bulundu` : '', freeAdded ? 'Ücretli yol içermeyen rota eklendi' : ''].filter(Boolean).join(' · '), 3500);
 }
 

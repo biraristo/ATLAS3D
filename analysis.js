@@ -239,13 +239,14 @@ function compareHtml() {
   return `<section class="an-sec full">
     <div class="an-h"><h3>Rotaları karşılaştır</h3><small>seçmek için dokun</small></div>
     <div class="an-cmp" role="table">
-      <div class="an-cmp-r an-cmp-h" role="row"><span role="columnheader">Rota</span><span role="columnheader">Süre</span><span role="columnheader">Tırmanış</span><span role="columnheader">Dik yol</span><span role="columnheader">En dik</span></div>
+      <div class="an-cmp-r an-cmp-h" role="row"><span role="columnheader">Rota</span><span role="columnheader">Süre</span><span role="columnheader">Tırmanış</span><span role="columnheader">Dik yol</span><span role="columnheader">En dik</span><span role="columnheader">Ücret</span></div>
       ${rows.map(r => `<button class="an-cmp-r ${r.x === AN.r ? 'on' : ''}" data-i="${r.i}" role="row">
         <span role="cell"><b>${r.i + 1}</b> · ${km(r.x.total)}</span>
         <span role="cell" class="${r.x.duration === fastest ? 'best' : ''}">${fmtDur(r.x.duration)}</span>
         <span role="cell" class="${r.up === best('up') ? 'best' : ''}">${mm(r.up)}</span>
         <span role="cell" class="${r.steepKm === best('steepKm') ? 'best' : ''}">${km(r.steepKm)}</span>
         <span role="cell" class="${r.maxUp === best('maxUp') ? 'best' : ''}">${fmtSlope(r.maxUp)}</span>
+        <span role="cell" class="${(r.x.tolls?.total ?? 0) === Math.min(...rows.map(q => q.x.tolls?.total ?? 0)) ? 'best' : ''}">${r.x.tolls ? (r.x.tolls.total ? fmtTL(r.x.tolls.total) : 'Ücretsiz') : '–'}</span>
       </button>`).join('')}
     </div>
     <p class="an-fine" style="margin-top:8px">Yeşil değer o sütunun en iyisi. "Dik yol": %6 üzeri çıkış ve %8 üzeri iniş toplamı.</p>

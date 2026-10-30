@@ -1078,6 +1078,7 @@ function dirResultsHtml() {
         <div><span class="t ${r.duration > fastest * 1.15 ? 'slow' : ''}">${fmtDur(r.duration)}</span><span class="d">${fmtDist(r.distance)}</span></div>
         <div class="via">${r.summaryText ? esc(r.summaryText) + ' üzerinden' : ''}${i === 0 && dir.routes.length > 1 ? ' · En hızlı rota' : ''}</div>
         <div class="via">Tahmini varış: ${fmtClock(new Date(now + r.duration * 1000))}</div>
+        ${r.tolls ? `<div class="via toll-line">${r.tolls.total > 0 ? `<span class="toll-chip"><span class="ms">toll</span>${fmtTL(r.tolls.total)} geçiş ücreti</span>` : '<span class="toll-chip free"><span class="ms">money_off</span>Ücretsiz</span>'}${dir.routes.length > 1 && dir.routes.some(x => x.tolls && x.tolls.total !== r.tolls.total) && r.tolls.total === Math.min(...dir.routes.map(x => x.tolls?.total ?? Infinity)) ? '<span class="toll-best">En ucuz</span>' : ''}</div>` : ''}
         ${r.profile ? `<div class="via climb"><span style="color:#dc2626">↑ ${nf0.format(Math.round(r.profile.ascent))} m</span> <span style="color:#2563eb">↓ ${nf0.format(Math.round(r.profile.descent))} m</span>${r.profile.steep.length ? ` · ${r.profile.steep.length} dik bölüm` : ''}${r.profile.tAdj ? ` · eğime göre ~${fmtDur(r.profile.tAdj)}` : ''}</div>` : ''}
         ${i === dir.sel ? `<div class="btns"><button class="btn primary" id="nav-start"><span class="ms">navigation</span>Başlat</button><button class="btn outline" id="steps-toggle"><span class="ms">list</span>${dir.showSteps ? 'Adımları gizle' : 'Adımlar'}</button><button class="btn outline" id="fly-btn" title="Rotayı 3D önizle"><span class="ms">3d_rotation</span>3D önizle</button><button class="btn outline" id="dir-share" aria-label="Paylaş"><span class="ms">share</span></button></div>` : ''}
       </div>
@@ -1089,8 +1090,19 @@ function dirResultsHtml() {
   const steepHtml = pr && pr.steep.length ? `<div class="section-title" style="padding:10px 24px 2px">Dik bölümler</div><div class="steep-list">${pr.steep.map((s, i) => `<div class="steep" data-k="${i}"><span class="ms" style="color:${slopeColor(s.grade)}">${s.grade > 0 ? 'trending_up' : 'trending_down'}</span><div><b>${fmtDist(s.len)} boyunca ortalama ${fmtSlope(s.grade)} ${s.grade > 0 ? 'tırmanış' : 'iniş'}</b><small>${fmtDist(s.from)} sonra başlar · ${s.dh > 0 ? '+' : ''}${nf0.format(Math.round(s.dh))} m · en dik ${fmtSlope(s.max)}</small></div></div>`).join('')}</div>` : '';
   const dE = v => v == null ? '' : Math.abs(v) < 3 ? '' : ` · <span style="color:${v > 0 ? '#dc2626' : '#2563eb'}">${v > 0 ? '↑' : '↓'} ${nf0.format(Math.round(Math.abs(v)))} m</span>`;
   const steps = dir.showSteps ? `<div class="step-sum">${esc(dir.from.name)} → ${esc(dir.to.name)}</div><ol class="steps">${r.steps.map((s, i) => `<li class="step" data-s="${i}"><span class="ms">${s.icon}</span><div>${esc(s.text)}<div class="sd">${s.distance > 0 ? fmtDist(s.distance) : ''}${dE(s.dElev)}</div></div></li>`).join('')}</ol>` : '';
+  const tollHtml = r.tolls && dir.mode === 'car' ? tollSectionHtml(r) : '';
   const altNote = dir.altPending ? '<div class="alt-pending"><span class="spinner sm"></span>Alternatif rotalar aranıyor…</div>' : '';
-  return opt + altNote + prof + steepHtml + steps + '<div class="mini-note">Süreler trafik içermez. Yükseklik verisi ~30 m çözünürlüklü arazi modelinden hesaplanır.</div>';
+  return opt + altNote + tollHtml + prof + steepHtml + steps + '<div class="mini-note">Süreler trafik içermez. Yükseklik verisi ~30 m çözünürlüklü arazi modelinden hesaplanır.</div>';
+}
+function tollSectionHtml(r) {
+  const t = r.tolls;
+  if (!t.items.length) return `<div class="toll-sec"><div class="toll-h"><span class="ms" style="color:#188038">money_off</span><b>Bu rota ücretsiz</b></div><p class="toll-fine">Rotada ücretli otoyol, köprü veya tünel yok.</p></div>`;
+  const icon = k => k === 'köprü' ? 'architecture' : k === 'tünel' ? 'subway' : 'toll';
+  return `<div class="toll-sec">
+    <div class="toll-h"><span class="ms">toll</span><b>Geçiş ücretleri</b><span class="toll-total">${fmtTL(t.total)}</span></div>
+    <ol class="toll-list">${t.items.map(i => `<li><span class="ms">${icon(i.kind)}</span><span class="tl-m"><b>${esc(i.name)}</b><small>${fmtDist(i.at)} sonra${i.km ? ' · ' + nf0.format(Math.round(i.km)) + ' km ücretli yol' : ''}${i.note ? ' · ' + esc(i.note) : ''}</small></span><span class="tl-p">${fmtTL(i.price)}</span></li>`).join('')}</ol>
+    <p class="toll-fine">1. sınıf otomobil, KGM ${TOLL_DATE} tarifesi. Ödeme HGS veya OGS ile otomatik alınır; gişelerde nakit kabul edilmez. Ücret, girdiğin ve çıktığın gişeye göre biraz farklı olabilir.</p>
+  </div>`;
 }
 function wireDirResults() {
   const box = $('dir-results'); if (!box) return;
@@ -1245,9 +1257,11 @@ function prepRoute(r) {
     const loc = s.maneuver.location; let best = ci, bd = Infinity;
     for (let j = ci; j < coords.length; j++) { const d = Math.abs(coords[j][0] - loc[0]) + Math.abs(coords[j][1] - loc[1]); if (d < bd) { bd = d; best = j; } if (d < 1e-7) break; }
     ci = best;
-    steps.push({ text, icon, distance: s.distance, duration: s.duration, loc, at: cum[best], bearing: s.maneuver.bearing_after, type: s.maneuver.type });
+    steps.push({ text, icon, name: s.name || '', ref: s.ref || '', distance: s.distance, duration: s.duration, loc, at: cum[best], bearing: s.maneuver.bearing_after, type: s.maneuver.type });
   }
-  return { ...r, coords, cum, steps, total: cum[cum.length - 1] };
+  const out = { ...r, coords, cum, steps, total: cum[cum.length - 1] };
+  if (typeof computeTolls === 'function') try { out.tolls = computeTolls(out); } catch (e) { console.warn('ücret', e); }
+  return out;
 }
 
 /* ================= Navigasyon ================= */
@@ -1335,6 +1349,14 @@ async function navTick(force) {
       const pct = 'yüzde ' + Math.round(Math.abs(st.grade)), L = fmtDist(st.len).replace(/ m$/, ' metre').replace(/ km$/, ' kilometre');
       toast(`Dikkat: ${fmtDist(ahead)} sonra ${fmtDist(st.len)} boyunca ${fmtSlope(st.grade)} ${st.grade > 0 ? 'tırmanış' : 'iniş'}`, 6000);
       setTimeout(() => say(`Dikkat, ${st.grade > 0 ? 'dik yokuş' : 'dik iniş'}. ${L} boyunca ${pct} eğim.`), 2500);
+    }
+  }
+  if (r.tolls && dir.mode === 'car') for (const [k, it] of r.tolls.items.entries()) {
+    const ahead = it.at - along, key = 'toll:' + k;
+    if (ahead > 0 && ahead <= 1500 && !navAnnounced.has(key)) {
+      navAnnounced.add(key);
+      toast(`${fmtDist(ahead)} sonra ücretli: ${it.name} · ${fmtTL(it.price)}`, 6000);
+      setTimeout(() => say(`${fmtDist(ahead).replace(/ m$/, ' metre').replace(/ km$/, ' kilometre')} sonra ücretli ${it.kind === 'otoyol' ? 'otoyol' : it.kind}: ${it.name.replace(/\s*\(.*?\)/g, '')}. Yaklaşık ${Math.round(it.price)} lira.`), 4000);
     }
   }
   $('nav-time').textContent = fmtDur(remTime);

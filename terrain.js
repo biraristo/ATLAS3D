@@ -41,7 +41,7 @@ function ensureSlopeLayer() {
   if (map.getLayer('a3-slope')) return;
   map.addSource('a3-slope', { type: 'raster', tiles: ['slope://{z}/{x}/{y}'], tileSize: 256, minzoom: 9, maxzoom: 13 });
   const before = map.getStyle().layers.find(l => l.type === 'line' && !OWN.has(l.id))?.id;
-  map.addLayer({ id: 'a3-slope', type: 'raster', source: 'a3-slope', minzoom: 9, paint: { 'raster-opacity': 0.8, 'raster-fade-duration': 150 } }, before);
+  map.addLayer({ id: 'a3-slope', type: 'raster', source: 'a3-slope', minzoom: 9, paint: { 'raster-opacity': typeof isDark === 'function' && isDark() ? 0.5 : 0.8, 'raster-fade-duration': 150 } }, before);
   OWN.add('a3-slope');
 }
 
@@ -62,6 +62,7 @@ function ensureContours() {
       layout: { 'symbol-placement': 'line', 'text-size': 10, 'text-field': ['concat', ['number-format', ['get', 'ele'], {}], ' m'], 'text-font': ['Noto Sans Regular'], 'symbol-spacing': 300 },
       paint: { 'text-color': '#6d5235', 'text-halo-color': 'rgba(255,255,255,.85)', 'text-halo-width': 1.2 } }, before);
     ['a3-contour-line', 'a3-contour-label'].forEach(id => OWN.add(id));
+    if (typeof applyMapTheme === 'function') applyMapTheme(); // koyu temada eğri ve etiket renkleri
   }).catch(e => { contourReady = null; toast('Eş yükselti eğrileri yüklenemedi'); throw e; });
   return contourReady;
 }

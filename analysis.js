@@ -376,7 +376,7 @@ function drawChart() {
   let navm = '';
   if (AN.along != null && AN.along > AN.d0) {
     const xa = Math.min(L + w, X(AN.along));
-    navm += `<rect x="${L}" y="${T}" width="${xa - L}" height="${h}" fill="#ffffff" opacity=".55"/>`;
+    navm += `<rect x="${L}" y="${T}" width="${xa - L}" height="${h}" style="fill:var(--bg)" opacity=".55"/>`;
     if (AN.along <= AN.d1) { const p = profileAt(pr, AN.along); navm += `<line x1="${xa}" x2="${xa}" y1="${T}" y2="${T + h}" stroke="#1a73e8" stroke-width="2"/><circle cx="${xa}" cy="${Y(p.elev)}" r="6" fill="#1a73e8" stroke="#fff" stroke-width="2.5"/>`; }
   }
   // İmleç
@@ -384,7 +384,7 @@ function drawChart() {
   const tip = $('an-tip');
   if (AN.cursor != null && AN.cursor >= AN.d0 && AN.cursor <= AN.d1) {
     const p = profileAt(pr, AN.cursor), xc = X(AN.cursor), yc = Y(p.elev);
-    cur = `<line x1="${xc}" x2="${xc}" y1="${T}" y2="${T + h}" stroke="#0f172a" stroke-width="1.5"/><circle cx="${xc}" cy="${yc}" r="5.5" fill="#fff" stroke="#0f172a" stroke-width="2.5"/>`;
+    cur = `<line x1="${xc}" x2="${xc}" y1="${T}" y2="${T + h}" style="stroke:var(--text)" stroke-width="1.5"/><circle cx="${xc}" cy="${yc}" r="5.5" fill="#fff" stroke="#0f172a" stroke-width="2.5"/>`;
     tip.hidden = false;
     tip.innerHTML = `<b>${nf0.format(Math.round(p.elev))} m</b><span style="color:${slopeColor(p.slope)}">${fmtSlope(p.slope)} ${p.slope > 2 ? 'tırmanış' : p.slope < -2 ? 'iniş' : 'düz'}</span><small>${atKm(AN.cursor)}</small>`;
     const tw = tip.offsetWidth || 120;
@@ -408,7 +408,7 @@ function drawOverview() {
   const full = AN.d0 <= 0 && AN.d1 >= pr.len;
   el.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-hidden="true">
     <path d="${d}L${L + w} ${H}L${L} ${H}Z" fill="#cbd5e1"/>
-    ${full ? '' : `<rect x="${L}" y="0" width="${X(AN.d0) - L}" height="${H}" fill="#ffffff" opacity=".7"/><rect x="${X(AN.d1)}" y="0" width="${L + w - X(AN.d1)}" height="${H}" fill="#ffffff" opacity=".7"/><rect x="${X(AN.d0)}" y="1" width="${Math.max(4, X(AN.d1) - X(AN.d0))}" height="${H - 2}" rx="4" fill="none" stroke="#1a73e8" stroke-width="2"/>`}
+    ${full ? '' : `<rect x="${L}" y="0" width="${X(AN.d0) - L}" height="${H}" style="fill:var(--bg)" opacity=".7"/><rect x="${X(AN.d1)}" y="0" width="${L + w - X(AN.d1)}" height="${H}" style="fill:var(--bg)" opacity=".7"/><rect x="${X(AN.d0)}" y="1" width="${Math.max(4, X(AN.d1) - X(AN.d0))}" height="${H - 2}" rx="4" fill="none" stroke="#1a73e8" stroke-width="2"/>`}
     ${AN.along != null ? `<line x1="${X(AN.along)}" x2="${X(AN.along)}" y1="0" y2="${H}" stroke="#1a73e8" stroke-width="2"/>` : ''}
   </svg>`;
 }
@@ -484,7 +484,10 @@ function slopeTint(g) { // kutucuk zemini: eğim renginin açık tonu
 // Okunabilir yazı rengi: açık eğim renklerini (sarı, açık yeşil) koyulaştır
 function slopeInk(g) {
   const c = slopeColor(g), rgb = c.startsWith('#') ? [1, 3, 5].map(k => parseInt(c.slice(k, k + 2), 16)) : (c.match(/\d+/g) || [66, 133, 244]).map(Number);
-  const lum = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255, f = lum > 0.6 ? 0.42 : lum > 0.45 ? 0.62 : 0.85;
+  const lum = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255;
+  // Koyu temada eğim rengi koyulaştırılmaz, aksine beyaza doğru açılır (koyu zeminde okunsun)
+  if (typeof isDark === 'function' && isDark()) { const t = lum > 0.5 ? 0.15 : 0.4; return `rgb(${rgb.map(v => Math.round(v + (255 - v) * t)).join(',')})`; }
+  const f = lum > 0.6 ? 0.42 : lum > 0.45 ? 0.62 : 0.85;
   return `rgb(${rgb.map(v => Math.round(v * f)).join(',')})`;
 }
 const slopeWord = g => g > 2 ? 'tırmanış' : g < -2 ? 'iniş' : 'düz yol';
@@ -520,7 +523,7 @@ function navTerrainHtml(r, along) {
       <defs><linearGradient id="nt-g" gradientUnits="userSpaceOnUse" x1="0" x2="${W}" y1="0" y2="0">${stops.join('')}</linearGradient></defs>
       <path d="${line}L${W} ${H}L0 ${H}Z" fill="url(#nt-g)" opacity=".28"/>
       <path d="${line}" fill="none" stroke="url(#nt-g)" stroke-width="2.4" vector-effect="non-scaling-stroke"/>
-      <rect x="0" y="0" width="${xa.toFixed(1)}" height="${H}" fill="#fff" opacity=".55"/>
+      <rect x="0" y="0" width="${xa.toFixed(1)}" height="${H}" style="fill:var(--bg)" opacity=".55"/>
       <line x1="${xa.toFixed(1)}" x2="${xa.toFixed(1)}" y1="0" y2="${H}" stroke="#1a73e8" stroke-width="1.5" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>
     </svg><span class="nt-dot" style="left:${(xa / W * 100).toFixed(2)}%;top:${(ya / H * 100).toFixed(1)}%"></span></div>
     <div class="nt-info"><span>${info}</span><span class="nt-win">önündeki ${fmtDist(d1 - along)}</span></div>`;

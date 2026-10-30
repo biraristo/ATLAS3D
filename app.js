@@ -11,6 +11,84 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem('a3_' + k); return v ? JSON.parse(v) : d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem('a3_' + k, JSON.stringify(v)); } catch {} }
 };
+/* ================= Tema (Sistem / Aydınlık / Koyu) ================= */
+const THEME_MQ = matchMedia('(prefers-color-scheme: dark)');
+let themePref = store.get('theme', 'system');
+const isDark = () => themePref === 'dark' || (themePref === 'system' && THEME_MQ.matches);
+function setThemeAttr() {
+  const dark = isDark();
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#202124' : '#ffffff');
+}
+setThemeAttr();
+// Harita renkleri: OpenFreeMap stilindeki her renk katman türüne göre koyulaştırılır (açık temada özgün renkler geri yüklenir)
+function parseColor(c) {
+  if (typeof c !== 'string') return null; c = c.trim().toLowerCase();
+  let r, g, b, a = 1, m;
+  if ((m = c.match(/^#([0-9a-f]{3,8})$/))) {
+    let h = m[1]; if (h.length <= 4) h = [...h].map(x => x + x).join('');
+    r = parseInt(h.slice(0, 2), 16); g = parseInt(h.slice(2, 4), 16); b = parseInt(h.slice(4, 6), 16); if (h.length === 8) a = parseInt(h.slice(6, 8), 16) / 255;
+  } else if ((m = c.match(/^rgba?\(([^)]+)\)$/))) { [r, g, b, a = 1] = m[1].split(',').map(parseFloat); }
+  else if ((m = c.match(/^hsla?\(([^)]+)\)$/))) { const [h, sp, lp, al = 1] = m[1].split(',').map(parseFloat); return { h, s: sp / 100, l: lp / 100, a: al }; }
+  else return null;
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+  let h = 0, s = 0;
+  if (d) { s = d / (1 - Math.abs(2 * l - 1)); h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h = (h * 60 + 360) % 360; }
+  return { h, s, l, a };
+}
+const hsl = ({ h, s, l, a }) => `hsla(${h.toFixed(0)},${(Math.max(0, Math.min(1, s)) * 100).toFixed(0)}%,${(Math.max(0, Math.min(1, l)) * 100).toFixed(0)}%,${(+a).toFixed(2)})`;
+const clamp01 = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+function darkColor(prop, c) {
+  const x = parseColor(c); if (!x) return c;
+  const water = x.h >= 180 && x.h <= 250 && x.s > 0.2;
+  if (prop === 'background-color') return '#16181b';
+  if (prop === 'fill-extrusion-color') return '#33363b';
+  if (prop === 'text-color') return hsl({ ...x, s: x.s * 0.6, l: clamp01(0.93 - x.l * 0.45, 0.6, 0.93) });
+  if (prop === 'text-halo-color') return 'rgba(18,20,23,0.85)';
+  if (prop === 'hillshade-highlight-color') return '#4a5160';
+  if (prop.startsWith('hillshade')) return '#000000';
+  if (prop === 'line-color') {
+    if (water) return hsl({ ...x, s: x.s * 0.5, l: 0.3 });
+    return hsl({ ...x, s: x.s * 0.55, l: x.l > 0.85 ? 0.22 + (x.l - 0.85) * 1.1 : clamp01(0.1 + x.l * 0.22, 0.1, 0.3) });
+  }
+  if (prop === 'fill-color' || prop === 'fill-outline-color') {
+    if (water) return hsl({ ...x, s: x.s * 0.45, l: 0.15 });
+    // Yeşil alanlar ve diğer yüzeyler: hafif renk tonu kalır ama zeminden ancak biraz açık
+    return hsl({ ...x, s: Math.min(x.s, 0.6) * 0.35, l: clamp01(0.11 + (x.l - 0.7) * 0.2, 0.09, 0.16) });
+  }
+  return c;
+}
+const mapColorValue = (prop, v) => typeof v === 'string' ? darkColor(prop, v) : Array.isArray(v) ? v.map(e => mapColorValue(prop, e)) : v;
+const THEME_ORIG = {}; // katman → { paint özelliği: özgün değer }
+function rememberColors(layers) {
+  for (const l of layers) for (const [k, v] of Object.entries(l.paint || {})) if (/color/.test(k)) (THEME_ORIG[l.id] ??= {})[k] = v;
+}
+const DARK_SKY = { 'sky-color': '#0b1220', 'horizon-color': '#1d2733', 'fog-color': '#16181b', 'sky-horizon-blend': 0.5, 'horizon-fog-blend': 0.6, 'fog-ground-blend': 0.85, 'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 1, 10, 1, 12, 0] };
+const LIGHT_SKY = { 'sky-color': '#9ccbf5', 'horizon-color': '#e7f1fb', 'fog-color': '#f2f5f8', 'sky-horizon-blend': 0.5, 'horizon-fog-blend': 0.6, 'fog-ground-blend': 0.85, 'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 1, 10, 1, 12, 0] };
+function themeStyle(style) { // harita kurulmadan önce: ilk açılışta açık renk parlaması olmasın
+  rememberColors(style.layers);
+  if (!isDark()) return;
+  for (const l of style.layers) for (const k of Object.keys(l.paint || {})) if (/color/.test(k)) l.paint[k] = mapColorValue(k, l.paint[k]);
+  style.sky = DARK_SKY;
+}
+function applyMapTheme() {
+  if (!map?.isStyleLoaded?.()) return;
+  const dark = isDark();
+  for (const id of ['a3-contour-line', 'a3-contour-label']) if (map.getLayer(id) && !THEME_ORIG[id]) rememberColors([map.getStyle().layers.find(l => l.id === id)]);
+  for (const [id, props] of Object.entries(THEME_ORIG)) {
+    if (!map.getLayer(id)) continue;
+    for (const [k, v] of Object.entries(props)) { try { map.setPaintProperty(id, k, dark ? mapColorValue(k, v) : v); } catch {} }
+  }
+  try { map.setSky(dark ? DARK_SKY : LIGHT_SKY); } catch {}
+  if (map.getLayer('a3-slope')) map.setPaintProperty('a3-slope', 'raster-opacity', dark ? 0.5 : 0.8); // koyu zeminde eğim renkleri baskın olmasın
+}
+function setTheme(pref) {
+  themePref = pref; store.set('theme', pref); setThemeAttr(); applyMapTheme();
+  document.querySelectorAll('[data-th]').forEach(b => { b.classList.toggle('on', b.dataset.th === pref); b.setAttribute('aria-checked', b.dataset.th === pref); });
+}
+THEME_MQ.addEventListener?.('change', () => { if (themePref === 'system') { setThemeAttr(); applyMapTheme(); } });
+
 function toast(msg, ms = 3000) {
   const t = $('toast'); t.textContent = msg; t.hidden = false;
   clearTimeout(toast._t); toast._t = setTimeout(() => { t.hidden = true; }, ms);
@@ -144,7 +222,8 @@ async function buildStyle() {
   insert({ id: 'a3-sat', type: 'raster', source: 'sat', layout: { visibility: 'none' } }, firstSymbol);
   insert({ id: 'a3-satroads', type: 'raster', source: 'satroads', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.85 } }, firstSymbol);
   if (opts.terrain) style.terrain = { source: 'dem', exaggeration: EXAG }; else delete style.terrain;
-  style.sky = { 'sky-color': '#9ccbf5', 'horizon-color': '#e7f1fb', 'fog-color': '#f2f5f8', 'sky-horizon-blend': 0.5, 'horizon-fog-blend': 0.6, 'fog-ground-blend': 0.85, 'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 1, 10, 1, 12, 0] };
+  style.sky = LIGHT_SKY;
+  themeStyle(style);
   return style;
 }
 
@@ -1013,9 +1092,13 @@ $('zoom-in').onclick = () => map?.zoomIn();
 $('zoom-out').onclick = () => map?.zoomOut();
 $('tilt').onclick = () => {
   if (!map) return;
-  const m = tiltMode(navActive ? navPitch : map.getPitch());
+  const m = tiltMode(navActive && navFollow ? navPitch : map.getPitch());
   const next = m === '2d' ? 60 : m === '3d' ? PITCH_HORIZON : 0;
-  if (navActive) { navPitch = next; navFollow = true; navTick(true); toast(next === 0 ? '2D görünüm' : next === 60 ? '3D görünüm' : 'Ufuk görünümü', 1500); return; }
+  if (navActive) {
+    navPitch = next; toast(next === 0 ? '2D görünüm' : next === 60 ? '3D görünüm' : 'Ufuk görünümü', 1500);
+    // Konumu takip ederken kamera oradan eğilir; başka bir yere bakılıyorsa (analizden açılan tırmanış vb.) oraya dokunulmaz
+    if (navFollow) { navTick(true); return; }
+  }
   // Ufuk modunda kamera biraz alçalır: yakın yamaçlar ve uzaktaki dağlar birlikte görünür
   if (next === PITCH_HORIZON) map.easeTo({ pitch: next, zoom: Math.max(map.getZoom(), 13), bearing: map.getBearing() || -20, duration: 1100 });
   else if (next === 0) map.easeTo({ pitch: 0, bearing: 0, duration: 700 });
@@ -1242,6 +1325,7 @@ async function computeRoute({ quiet = false, fromOverride = null } = {}) {
 // kenar boşluklarında güvenilmez sonuç verebildiği için zoom doğrudan mesafeden hesaplanır.
 function viewSegment(a, b) {
   if (!a || !b || !map) return;
+  if (navActive) navFollow = false; // navigasyonda başka bir kesite bakılırken kamera konuma geri çekilmesin
   if (map._elevationFreeze) map._elevationFreeze = false;
   map.stop();
   const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], len = Math.max(150, haversine(a, b));
@@ -1611,6 +1695,8 @@ function openDrawer() {
 }
 function closeDrawer() { $('drawer').hidden = true; $('drawer-bg').hidden = true; }
 $('menu-btn').onclick = openDrawer; $('drawer-close').onclick = closeDrawer; $('drawer-bg').onclick = closeDrawer;
+document.querySelectorAll('[data-th]').forEach(b => { b.onclick = e => { e.stopPropagation(); setTheme(b.dataset.th); }; });
+setTheme(themePref);
 $('drawer').onclick = e => {
   const a = e.target.closest('[data-act]')?.dataset.act; if (!a) return; closeDrawer();
   if (a === 'vehicles') openGarage();

@@ -14,6 +14,7 @@ Telefonda uygulama gibi kurulabilen (PWA) **3D** harita. Rakım ve eğim analizi
 - **Navigasyon:** sesli yönlendirme, rotadan çıkınca yeniden hesaplama, anlık rakım/eğim, dik yokuş uyarısı, anlık yakıt tüketimi (GPS hızı, hızlanma ve eğimden), harcanan yakıt, yakıt ücreti ve geçilen gişelerle birlikte toplam maliyet, hız önerisi ve yolculuk sonu özeti
 - **Arazi analizi:** eğim haritası, eş yükselti eğrileri, merkez/imleç rakım-eğim göstergesi
 - **Menü:** Araçlarım (birden fazla araç: ad, tip, yakıt, ortalama tüketim, depo hacmi, isteğe bağlı fiyat; 100 km maliyeti ve depo menzili), yolculuk geçmişi (aylık km, yakıt ve maliyet toplamı), akaryakıt fiyatları (EPDK), ev ve iş (tek dokunuşla yol tarifi, aramada öneri), aracın yakıtına göre yakındaki benzinlik/şarj istasyonları, ulaşılabilir alan
+- **Görünüm:** menüden Sistem / Aydınlık / Koyu tema; koyu temada arayüz ve harita renkleri birlikte koyulaşır
 - **Araçlar:** mesafe ölçme ve arazi kesiti, rotanın 3D kuş bakışı önizlemesi, sağ tık/uzun basma menüsü
 
 ## Kaynaklar

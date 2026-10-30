@@ -147,7 +147,7 @@ async function traffic(request, url, env, ctx) {
       ? `${base}/traffic/map/4/tile/flow/relative0/${z}/${x}/${y}.png?tileSize=256&thickness=8&key=${key}`
       : `${base}/traffic/map/4/tile/incidents/s3/${z}/${x}/${y}.png?tileSize=256&key=${key}`;
     const r = await fetch(up);
-    if (!r.ok) return new Response(null, { status: r.status === 403 || r.status === 429 ? 204 : 502 });
+    if (!r.ok) { const t = (await r.text()).slice(0, 300).replace(key, '***'); return new Response(null, { status: r.status === 403 || r.status === 429 ? 204 : 502, headers: { 'x-upstream': r.status + ' ' + t.replace(/[^\x20-\x7e]/g, ' ') } }); }
     const res = new Response(r.body, { headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=120' } });
     ctx.waitUntil(caches.default.put(cacheKey, res.clone()));
     return res;
@@ -162,7 +162,7 @@ async function traffic(request, url, env, ctx) {
     const a = pts[0], b = pts[pts.length - 1];
     const up = `${base}/routing/1/calculateRoute/${a[1]},${a[0]}:${b[1]},${b[0]}/json?key=${key}&traffic=true&travelMode=car&sectionType=traffic&computeTravelTimeFor=all&routeRepresentation=polyline`;
     const r = await fetch(up, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ supportingPoints: pts.map(p => ({ latitude: p[1], longitude: p[0] })) }) });
-    if (!r.ok) return json({ error: 'upstream ' + r.status }, r.status === 429 ? 429 : 502);
+    if (!r.ok) return json({ error: 'upstream ' + r.status, detail: (await r.text()).slice(0, 400).replace(key, '***') }, r.status === 429 ? 429 : 502);
     const d = await r.json(), route = d.routes?.[0];
     if (!route) return json({ error: 'no-route' }, 502);
     const points = (route.legs || []).flatMap(l => l.points || []).map(p => [p.longitude, p.latitude]);

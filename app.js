@@ -1179,7 +1179,7 @@ function prepRoute(r) {
 }
 
 /* ================= Navigasyon ================= */
-let navActive = false, navBearing = null, navRoute = null, navAnnounced = new Set(), navOff = 0, navFollow = true, navMuted = store.get('muted', false), wakeLock = null, navLastIdx = 0, rerouting = false;
+let navCamAt = 0, navActive = false, navBearing = null, navRoute = null, navAnnounced = new Set(), navOff = 0, navFollow = true, navMuted = store.get('muted', false), wakeLock = null, navLastIdx = 0, rerouting = false;
 async function startNav() {
   if (!dir.routes[dir.sel]) return;
   try { await ensureMe(); } catch (e) { toast(e.message + ' Navigasyon için konum gerekli.', 6000); return; }
@@ -1281,9 +1281,15 @@ async function navTick(force) {
   if (remaining < 25) { say('Hedefinize ulaştınız'); toast('Hedefinize ulaştınız' + (dir.to?.name ? ': ' + dir.to.name : ''), 5000); stopNav(); return; }
   navBearing = meHeading ?? s.segBearing;
   updateMeMarker();
-  if (navFollow) map.easeTo({ center: s.off < 30 ? s.pos : meLngLat, bearing: navBearing, pitch: 62,
+  // Kamera: üst üste binen animasyonlar arazi yüksekliğini dondurmasın (sık GPS güncellemesi, özellikle iPhone)
+  const now = performance.now();
+  if (navFollow && (force === true || now - navCamAt > 700)) {
+    navCamAt = now + (force === true ? 300 : 0);
+    if (map._elevationFreeze && map.terrain) map._elevationFreeze = false; // yarıda kalan animasyondan kalan donmayı çöz
+    map.easeTo({ center: s.off < 30 ? s.pos : meLngLat, bearing: navBearing, pitch: 62,
     zoom: dir.mode === 'car' ? ((meSpeed ?? 0) > 20 ? 16.3 : 17.2) : 18,
-    padding: { top: innerHeight * 0.4, bottom: 90, left: 20, right: 20 }, duration: force === true ? 900 : 750, easing: t => t });
+    padding: { top: innerHeight * 0.4, bottom: 90, left: 20, right: 20 }, duration: force === true ? 900 : 600, easing: t => t });
+  }
   if (force === true) setTimeout(() => { if (map._elevationFreeze && !map.isMoving()) { map._elevationFreeze = false; map.once('render', refreshMarkers); map.triggerRepaint(); } }, 1200);
 }
 

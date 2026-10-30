@@ -297,3 +297,11 @@ body.flying .map-ctrls{display:none}
 .route-opt .btns{flex-wrap:wrap}
 .btn{white-space:nowrap}
 #dir-share{padding:0 10px}
+/* Navigasyon başlığı: dönüş kartı, arazi bandı ve "ardından" alt alta akar (kart uzasa da üst üste binmez) */
+.nav-head{position:fixed;z-index:30;top:calc(10px + var(--safe-t));left:10px;right:10px;max-width:520px;margin:0 auto;display:flex;flex-direction:column;align-items:stretch;pointer-events:none}
+.nav-head>*{pointer-events:auto}
+.nav-head .nav-top{position:relative;top:auto;left:auto;right:auto;margin:0;z-index:2}
+.nav-head .nav-terrain{position:relative;top:auto;left:auto;right:auto;margin:-12px 0 0;padding-top:20px;z-index:1;flex-wrap:wrap;gap:4px 10px}
+.nav-head .nav-next{position:relative;top:auto!important;left:auto;align-self:flex-start;margin:6px 0 0;border-radius:10px;z-index:1}
+.nav-text{overflow-wrap:anywhere}
+@media (max-width:400px){.nav-dist{font-size:24px}.nav-text{font-size:16px}.nav-icon{font-size:38px!important}}

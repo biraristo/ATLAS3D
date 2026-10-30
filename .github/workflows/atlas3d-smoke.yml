@@ -18,6 +18,7 @@ jobs:
         run: |
           node --check app.js
           node --check worker.js
+          node --check terrain.js
           test -s index.html
           test -s style.css
           test -s wrangler.toml

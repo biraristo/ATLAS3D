@@ -1,5 +1,7 @@
+.git
+.wrangler
+.gitignore
+.assetsignore
 worker.js
 wrangler.toml
 README.md
-.git
-.assetsignore

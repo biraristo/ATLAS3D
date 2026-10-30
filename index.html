@@ -2,54 +2,113 @@
 <html lang="tr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0d1620">
-<title>ATLAS3D — 3D Yolculuk Haritası</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<meta name="description" content="ATLAS3D — 3D harita, yer arama ve yol tarifi">
+<title>ATLAS3D Haritalar</title>
+<link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
+<link rel="preconnect" href="https://unpkg.com" crossorigin>
+<link rel="preconnect" href="https://s3.amazonaws.com" crossorigin>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preload" href="https://tiles.openfreemap.org/styles/liberty" as="fetch" crossorigin>
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" media="print" onload="this.media='all'">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0..1,0&icon_names=3d_rotation,accessible,account_balance,add,add_road,apartment,arrow_back,arrow_downward,arrow_upward,attractions,bakery_dining,beach_access,bookmark,call,car_repair,castle,checkroom,chevron_left,close,content_copy,content_cut,dentistry,devices,directions,directions_bike,directions_boat,directions_bus,directions_car,directions_walk,ev_station,fastfood,fitness_center,flag,flight,fork_left,fork_right,height,help,history,home,hotel,icecream,info,label,landscape,layers,list,local_atm,local_bar,local_cafe,local_fire_department,local_gas_station,local_grocery_store,local_hospital,local_library,local_mall,local_parking,local_pharmacy,local_police,local_post_office,location_city,location_on,map,menu,merge,mosque,movie,museum,my_location,navigation,park,pin_drop,pool,public,ramp_left,ramp_right,refresh,remove,restaurant,roundabout_left,roundabout_right,satellite_alt,schedule,school,search,share,stadium,straight,straighten,subway,swap_vert,terrain,theater_comedy,train,tram,travel_explore,trending_down,trending_flat,trending_up,trip_origin,turn_left,turn_right,turn_sharp_left,turn_sharp_right,turn_slight_left,turn_slight_right,u_turn_left,volume_off,volume_up,water&display=block">
 <link rel="stylesheet" href="./style.css">
+<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js" defer></script>
+<script src="./app.js" defer></script>
+<script src="./terrain.js" defer></script>
 </head>
 <body>
-<div id="map" role="application" aria-label="Üç boyutlu arazi haritası"></div>
-<div id="google-3d" hidden aria-label="Google fotogerçekçi üç boyutlu harita"></div>
+<div id="map" role="application" aria-label="Üç boyutlu harita"></div>
 
-<header class="top">
-  <div class="brand"><strong>ATLAS<span>3D</span></strong><small>Canlı arazi keşfi</small></div>
-  <form id="search" class="search" role="search" autocomplete="off">
-    <input id="q" type="search" placeholder="Yer ara… (ör. Abant Gölü)" aria-label="Yer ara">
-    <button type="submit" aria-label="Ara">⌕</button>
-    <ul id="results" class="results" hidden></ul>
-  </form>
-</header>
-
-<div id="notice" class="notice" role="status" hidden></div>
-
-<div class="controls">
-  <select id="layer" aria-label="Harita katmanı">
-    <option value="satellite">Uydu</option>
-    <option value="hybrid" selected>Hibrit</option>
-    <option value="topo">Topoğrafik</option>
-    <option value="street">Sokak</option>
-  </select>
-  <button id="locate" aria-label="Konumumu bul" title="Konumumu bul">◎</button>
-  <button id="follow" aria-label="Konumumu takip et" title="Takip">➤</button>
-  <button id="terrain" class="active" aria-label="3D araziyi aç/kapat" title="3D arazi">⛰</button>
-  <button id="reset" aria-label="Kamera açısını sıfırla" title="3D görünüm">3D</button>
+<!-- Arama kutusu -->
+<div id="searchbox" class="searchbox">
+  <button class="icon-btn" id="menu-btn" aria-label="Menü"><span class="ms">menu</span></button>
+  <input id="q" type="text" placeholder="ATLAS3D Haritalar'da arayın" aria-label="Haritada ara" autocomplete="off" spellcheck="false" enterkeyhint="search">
+  <button class="icon-btn" id="clear-btn" aria-label="Temizle" hidden><span class="ms">close</span></button>
+  <button class="icon-btn" id="search-btn" aria-label="Ara"><span class="ms">search</span></button>
+  <span class="sep"></span>
+  <button class="icon-btn blue" id="dir-btn" aria-label="Yol tarifi"><span class="ms fill">directions</span></button>
+  <div id="suggest" class="suggest" hidden></div>
 </div>
 
-<section class="panel">
-  <div class="panel-head">
-    <div><small>ARAZİ KEŞFİ</small><h1 id="status">Bolu Dağı</h1></div>
-    <span id="gps" class="pill">GPS kapalı</span>
-  </div>
-  <div class="stats">
-    <div><small>ARAZİ RAKIMI</small><b id="altitude">—</b></div>
-    <div><small>KONUM</small><b id="coords">—</b></div>
-  </div>
-  <p id="hint">Sürükleyin, iki parmakla döndürün/eğin. Rakım, ekran merkezindeki arazi yüksekliğidir.</p>
-  <button id="bolu" class="secondary">Bolu Dağı'na dön</button>
-</section>
+<!-- Kategori çipleri -->
+<div id="chips" class="chips" role="toolbar" aria-label="Yakındaki yerler"></div>
 
-<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
-<script src="./app.js"></script>
+<!-- Sol panel / mobil alt sayfa -->
+<aside id="panel" class="panel" hidden aria-live="polite">
+  <div class="sheet-handle" id="sheet-handle"><span></span></div>
+  <button class="icon-btn panel-close" id="panel-close" aria-label="Kapat"><span class="ms">close</span></button>
+  <div id="panel-body" class="panel-body"></div>
+</aside>
+<button id="panel-collapse" class="panel-collapse" hidden aria-label="Paneli daralt"><span class="ms">chevron_left</span></button>
+
+<!-- Harita kontrolleri -->
+<div class="map-ctrls" id="map-ctrls">
+  <button class="ctrl" id="compass" aria-label="Kuzeye çevir" title="Kuzeye çevir"><span class="ms" id="compass-icon">navigation</span></button>
+  <button class="ctrl" id="locate" aria-label="Konumumu göster" title="Konumunuz"><span class="ms">my_location</span></button>
+  <div class="zoom">
+    <button class="ctrl" id="zoom-in" aria-label="Yakınlaştır"><span class="ms">add</span></button>
+    <button class="ctrl" id="zoom-out" aria-label="Uzaklaştır"><span class="ms">remove</span></button>
+  </div>
+  <button class="ctrl tilt" id="tilt" aria-label="2D / 3D" title="2D / 3D">2D</button>
+</div>
+
+<!-- Katmanlar -->
+<div class="layers" id="layers">
+  <button class="layers-btn" id="layers-btn" aria-label="Katmanlar"><span class="thumb" id="layers-thumb"></span><span class="lbl"><span class="ms">layers</span>Katmanlar</span></button>
+  <div class="layers-pop" id="layers-pop" hidden>
+    <div class="lp-title">Harita türü</div>
+    <div class="lp-row" id="basemaps"></div>
+    <div class="lp-title">Harita ayrıntıları</div>
+    <label class="lp-toggle"><input type="checkbox" id="opt-terrain" checked> <span class="ms">landscape</span> 3D arazi</label>
+    <label class="lp-toggle"><input type="checkbox" id="opt-buildings" checked> <span class="ms">apartment</span> 3D binalar</label>
+    <label class="lp-toggle"><input type="checkbox" id="opt-labels" checked> <span class="ms">label</span> Etiketler</label>
+    <div class="lp-title">Arazi analizi</div>
+    <label class="lp-toggle"><input type="checkbox" id="opt-slope"> <span class="ms">trending_up</span> Eğim haritası</label>
+    <div class="slope-legend" id="slope-legend" hidden><span><i style="background:#a3e635"></i>%5–10</span><span><i style="background:#facc15"></i>%10–20</span><span><i style="background:#f97316"></i>%20–35</span><span><i style="background:#dc2626"></i>%35–60</span><span><i style="background:#7e22ce"></i>%60+</span></div>
+    <label class="lp-toggle"><input type="checkbox" id="opt-contours"> <span class="ms">terrain</span> Eş yükselti eğrileri</label>
+    <label class="lp-range"><span class="ms">height</span> Yükseklik abartma <input type="range" id="opt-exag" min="1" max="3" step="0.1" value="1.2"><b id="exag-val">1,2×</b></label>
+  </div>
+</div>
+
+<!-- Menü çekmecesi -->
+<div id="drawer-bg" class="drawer-bg" hidden></div>
+<nav id="drawer" class="drawer" hidden aria-label="Menü">
+  <div class="drawer-head"><strong>ATLAS<span>3D</span></strong> Haritalar<button class="icon-btn" id="drawer-close" aria-label="Kapat"><span class="ms">close</span></button></div>
+  <button class="drawer-item" data-act="saved"><span class="ms">bookmark</span>Kaydedilenler</button>
+  <button class="drawer-item" data-act="recent"><span class="ms">history</span>Son aramalar</button>
+  <button class="drawer-item" data-act="measure"><span class="ms">straighten</span>Mesafe ölç</button>
+  <button class="drawer-item" data-act="share"><span class="ms">share</span>Haritayı paylaş</button>
+  <button class="drawer-item" data-act="mylocation"><span class="ms">my_location</span>Konumum</button>
+  <div class="drawer-sep"></div>
+  <button class="drawer-item" data-act="about"><span class="ms">info</span>Veri kaynakları</button>
+</nav>
+
+<!-- Sağ tık / uzun basma menüsü -->
+<div id="ctx" class="ctx" hidden role="menu"></div>
+
+<!-- Navigasyon arayüzü -->
+<div id="nav-top" class="nav-top" hidden>
+  <span class="ms nav-icon" id="nav-icon">straight</span>
+  <div><div class="nav-dist" id="nav-dist"></div><div class="nav-text" id="nav-text"></div></div>
+</div>
+<div id="nav-next" class="nav-next" hidden></div>
+<div id="nav-terrain" class="nav-terrain" hidden></div>
+<div id="nav-bottom" class="nav-bottom" hidden>
+  <button class="icon-btn" id="nav-exit" aria-label="Navigasyonu bitir"><span class="ms">close</span></button>
+  <div class="nav-eta"><b id="nav-time"></b><span id="nav-rest"></span></div>
+  <button class="icon-btn" id="nav-mute" aria-label="Sesli yönlendirme"><span class="ms" id="nav-mute-icon">volume_up</span></button>
+  <button class="icon-btn" id="nav-recenter" aria-label="Yeniden ortala"><span class="ms">navigation</span></button>
+</div>
+
+<!-- Ölçüm çubuğu -->
+<div id="measure-bar" class="measure-bar" hidden><span class="ms">straighten</span><span id="measure-text">Haritaya dokunarak noktalar ekleyin</span><button class="text-btn" id="measure-prof">Profil</button><button class="text-btn" id="measure-undo">Geri al</button><button class="text-btn" id="measure-end">Bitti</button></div>
+
+<div id="hud" class="hud" hidden aria-live="off"><small id="hud-label">Merkez</small><b id="hud-elev">—</b><span id="hud-slope"></span></div>
+<div id="fly-bar" class="fly-bar" hidden><span class="ms">3d_rotation</span><span id="fly-info"></span><button class="text-btn" id="fly-stop">Durdur</button><div class="fly-track"><div id="fly-prog"></div></div></div>
+<div id="toast" class="toast" hidden role="status"></div>
+<noscript><p style="padding:20px">ATLAS3D için JavaScript gerekli.</p></noscript>
 </body>
 </html>

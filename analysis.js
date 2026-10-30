@@ -96,9 +96,19 @@ function openAnalysis(r, along = null) {
   $('an-sheet').focus({ preventScroll: true }); // ekran okuyucu ve klavye için odak panele
   try { history.pushState({ an: 1 }, ''); } catch {}
 }
+// Geri tuşu desteği için açılışta geçmişe bir adım eklenir. Geri dönülürken adresteki eski "#harita konumu"
+// haritayı o eski yere zıplatmasın: bu tek hashchange olayını yut ve adresi güncel konuma çevir.
+let anSkipHash = false, anSkipTimer = null;
+const currentHashUrl = () => { const c = map.getCenter(); return `${location.pathname}#${map.getZoom().toFixed(2)}/${c.lat.toFixed(5)}/${c.lng.toFixed(5)}/${Math.round(map.getBearing())}/${Math.round(map.getPitch())}`; };
+addEventListener('hashchange', e => {
+  if (!anSkipHash) return;
+  anSkipHash = false; e.stopImmediatePropagation();
+  try { history.replaceState(history.state, '', currentHashUrl()); } catch {}
+}, true);
 function closeAnalysis(fromPop = false) {
   if (!AN.open) return;
   AN.open = false; $('analysis').hidden = true; body.classList.remove('an-open'); profMarker?.remove();
+  anSkipHash = true; clearTimeout(anSkipTimer); anSkipTimer = setTimeout(() => { anSkipHash = false; }, 800);
   if (!fromPop && history.state?.an) { try { history.back(); } catch {} }
   AN.prevFocus?.focus?.();
 }
@@ -294,7 +304,7 @@ function showOnMap(from, to) {
   closeAnalysis();
   if (isMobile() && !navActive) setSheet('min');
   if (navActive) navFollow = false;
-  setTimeout(() => map.fitBounds([a, b], { padding: mapPadding(), pitch: 65, bearing: bearingOf(a, b) - 90, maxZoom: 16.5, duration: 1400 }), 200);
+  setTimeout(() => viewSegment(a, b), 200);
   if (navActive) toast('Konuma dönmek için sağ alttaki ortala düğmesine dokunun', 4000);
 }
 
@@ -462,3 +472,119 @@ async function exportGpx(r) {
   setTimeout(() => URL.revokeObjectURL(url), 4000);
   toast('GPX dosyası indirildi');
 }
+
+/* ================= Navigasyon arazi bandı ================= */
+// Rakım + eğim kutucuğu + Analiz düğmesi; altında önündeki yolun canlı yükseklik grafiği.
+function slopeTint(g) { // kutucuk zemini: eğim renginin açık tonu
+  const c = slopeColor(g), m = c.match(/\d+/g) || [66, 133, 244];
+  const rgb = c.startsWith('#') ? [1, 3, 5].map(k => parseInt(c.slice(k, k + 2), 16)) : m.map(Number);
+  return `rgba(${rgb.join(',')},.16)`;
+}
+// Okunabilir yazı rengi: açık eğim renklerini (sarı, açık yeşil) koyulaştır
+function slopeInk(g) {
+  const c = slopeColor(g), rgb = c.startsWith('#') ? [1, 3, 5].map(k => parseInt(c.slice(k, k + 2), 16)) : (c.match(/\d+/g) || [66, 133, 244]).map(Number);
+  const lum = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255, f = lum > 0.6 ? 0.42 : lum > 0.45 ? 0.62 : 0.85;
+  return `rgb(${rgb.map(v => Math.round(v * f)).join(',')})`;
+}
+const slopeWord = g => g > 2 ? 'tırmanış' : g < -2 ? 'iniş' : 'düz yol';
+function navTerrainHtml(r, along) {
+  const pr = r.profile;
+  r._an ??= analyzeProfile(pr, dir.mode);
+  const p = profileAt(pr, along), aheadD = Math.min(150, Math.max(1, pr.len - along)), ahead = profileAt(pr, along + aheadD);
+  const sl = (ahead.elev - p.elev) / aheadD * 100;
+  // Pencere: biraz geri, araçta 10 km / yayada 3 km ileri
+  const fwd = dir.mode === 'car' ? 10000 : 3000, back = fwd * 0.06;
+  const d0 = Math.max(0, along - back), d1 = Math.min(pr.len, Math.max(along + fwd, d0 + 600));
+  const W = 300, H = 44, i0 = anIdx(pr, d0), i1 = anIdx(pr, d1);
+  let lo = Infinity, hi = -Infinity; for (let i = i0; i <= i1; i++) { lo = Math.min(lo, pr.elevs[i]); hi = Math.max(hi, pr.elevs[i]); }
+  const span = Math.max(25, hi - lo), X = d => (d - d0) / (d1 - d0) * W, Y = v => 4 + (1 - (v - lo) / span) * (H - 10);
+  const per = Math.max(1, Math.floor((i1 - i0) / 150));
+  let line = ''; for (let i = i0; i <= i1; i += per) line += (line ? 'L' : 'M') + X(pr.dists[i]).toFixed(1) + ' ' + Y(pr.elevs[i]).toFixed(1);
+  const stops = [];
+  for (const run of pr.runs) {
+    const s0 = pr.dists[run.i0], s1 = pr.dists[run.i1]; if (s1 < d0 || s0 > d1) continue;
+    const c = slopeColor(run.s); stops.push(`<stop offset="${Math.max(0, (s0 - d0) / (d1 - d0) * 100).toFixed(2)}%" stop-color="${c}"/><stop offset="${Math.min(100, (s1 - d0) / (d1 - d0) * 100).toFixed(2)}%" stop-color="${c}"/>`);
+  }
+  const xa = X(along), ya = Y(p.elev);
+  const a = r._an, cur = a.climbs.find(c => c.from <= along && c.to > along), next = a.climbs.find(c => c.from > along);
+  const info = cur ? `Tırmanıştasın · zirveye <b>${fmtDist(cur.to - along)}</b>, <b>+${nf0.format(Math.round(Math.max(0, cur.e1 - p.elev)))} m</b>`
+    : next ? `Sıradaki tırmanış <b>${fmtDist(next.from - along)}</b> sonra · <b>+${nf0.format(Math.round(next.dh))} m</b>`
+    : `Kalan <b style="color:#dc2626">↑ ${nf0.format(Math.round(p.upLeft))} m</b> <b style="color:#2563eb">↓ ${nf0.format(Math.round(p.downLeft))} m</b>`;
+  return `<div class="nt-top">
+      <span class="nt-elev"><small>RAKIM</small><b>${nf0.format(Math.round(p.elev))} m</b></span>
+      <span class="nt-chip" style="background:${slopeTint(sl)};color:${slopeInk(sl)}"><span class="ms">${ARROW(sl)}</span><b>${fmtSlope(sl)}</b> ${slopeWord(sl)}</span>
+      <span class="nt-ana" aria-hidden="true"><span class="ms">insights</span>Analiz</span>
+    </div>
+    <div class="nt-pw"><svg class="nt-prof" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+      <defs><linearGradient id="nt-g" gradientUnits="userSpaceOnUse" x1="0" x2="${W}" y1="0" y2="0">${stops.join('')}</linearGradient></defs>
+      <path d="${line}L${W} ${H}L0 ${H}Z" fill="url(#nt-g)" opacity=".28"/>
+      <path d="${line}" fill="none" stroke="url(#nt-g)" stroke-width="2.4" vector-effect="non-scaling-stroke"/>
+      <rect x="0" y="0" width="${xa.toFixed(1)}" height="${H}" fill="#fff" opacity=".55"/>
+      <line x1="${xa.toFixed(1)}" x2="${xa.toFixed(1)}" y1="0" y2="${H}" stroke="#1a73e8" stroke-width="1.5" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>
+    </svg><span class="nt-dot" style="left:${(xa / W * 100).toFixed(2)}%;top:${(ya / H * 100).toFixed(1)}%"></span></div>
+    <div class="nt-info"><span>${info}</span><span class="nt-win">önündeki ${fmtDist(d1 - along)}</span></div>`;
+}
+
+/* ================= Rakım göstergesi (alt kart) ================= */
+// Eğime göre yatan yapay ufuk, açıklamalı metin ve son dakikaların rakım grafiği.
+const HUD = { source: null, trail: [] };
+function hudGaugeSvg() {
+  return `<svg viewBox="0 0 44 44" width="44" height="44" aria-hidden="true">
+    <defs><clipPath id="hud-c"><circle cx="22" cy="22" r="20"/></clipPath></defs>
+    <circle cx="22" cy="22" r="20" fill="#e0f2fe"/>
+    <g clip-path="url(#hud-c)"><g id="hud-ground" class="hud-ground"><rect x="-20" y="22" width="84" height="40" fill="#22c55e"/><line x1="-20" y1="22" x2="64" y2="22" stroke="#fff" stroke-width="1.5"/></g></g>
+    <path d="M13 25 H19 L22 21 L25 25 H31" fill="none" stroke="#0f172a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="22" cy="22" r="20" fill="none" stroke="rgba(15,23,42,.15)" stroke-width="1.5"/></svg>`;
+}
+function setHud({ source, elev, grade, terrain, aspect, sub }) {
+  const el = $('hud'); if (!el || elev == null) return;
+  if (!el.dataset.ready) { $('hud-gauge').innerHTML = hudGaugeSvg(); el.dataset.ready = 1; }
+  HUD.source = source;
+  const g = source === 'gps' ? grade : terrain;
+  const ground = $('hud-ground');
+  if (ground) {
+    const ang = g == null ? 0 : Math.max(-38, Math.min(38, Math.atan(g / 100) * 180 / Math.PI * 2.2));
+    ground.style.transform = `rotate(${-ang}deg)`;
+    ground.querySelector('rect').setAttribute('fill', g == null ? '#cbd5e1' : slopeColor(source === 'gps' ? g : Math.abs(g)));
+  }
+  const labels = { gps: 'Konumunuz', center: 'Harita merkezi', cursor: 'İmleç' };
+  $('hud-label').innerHTML = `${source === 'gps' ? '<span class="hud-live"></span>' : ''}RAKIM · ${labels[source]}`;
+  $('hud-elev').textContent = nf0.format(Math.round(elev)) + ' m';
+  let chip;
+  if (source === 'gps') chip = grade == null ? `<span class="hud-chip muted"><span class="ms">directions_walk</span>Eğim için harekete geç</span>`
+    : `<span class="hud-chip" style="background:${slopeTint(grade)};color:${slopeInk(grade)}"><span class="ms">${ARROW(grade)}</span>${grade > 2 ? 'Çıkıyorsunuz' : grade < -2 ? 'İniyorsunuz' : 'Düz yol'} <b>${fmtSlope(grade)}</b></span>`;
+  else chip = terrain == null ? '' : `<span class="hud-chip" style="background:${slopeTint(terrain)};color:${slopeInk(terrain)}"><span class="ms">landscape</span>Arazi eğimi <b>%${nf0.format(Math.round(terrain))}</b></span>`;
+  $('hud-slope').innerHTML = chip;
+  $('hud-sub').textContent = sub || '';
+  // Son rakımlar grafiği
+  const sp = $('hud-spark');
+  if (source === 'gps' && HUD.trail.length >= 3) {
+    const t = HUD.trail.slice(-40), lo = Math.min(...t), hi = Math.max(...t), s = Math.max(6, hi - lo), W = 72, H = 30;
+    const d = t.map((v, i) => (i ? 'L' : 'M') + (i / (t.length - 1) * W).toFixed(1) + ' ' + (3 + (1 - (v - lo) / s) * (H - 6)).toFixed(1)).join('');
+    sp.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true"><path d="${d}L${W} ${H}L0 ${H}Z" fill="#1a73e8" opacity=".12"/><path d="${d}" fill="none" stroke="#1a73e8" stroke-width="2" stroke-linejoin="round"/><circle cx="${W}" cy="${(3 + (1 - (t[t.length - 1] - lo) / s) * (H - 6)).toFixed(1)}" r="3" fill="#1a73e8"/></svg><small>son ${nf0.format(Math.round((HUD.trailDist || 0)))} m</small>`;
+    sp.hidden = false;
+  } else sp.hidden = true;
+  el.hidden = false;
+}
+$('hud').onclick = () => {
+  const r = dir.routes?.[dir.sel];
+  openPanel(el => {
+    el.innerHTML = `<div class="list-head drag-zone"><h2>Rakım ve eğim</h2><small>Bu kart bulunduğun yerin yüksekliğini ve eğimini canlı gösterir</small></div>
+      <div class="info">
+        <div class="info-row"><span class="ms">my_location</span><span><b>Konumunuz:</b> GPS açıkken deniz seviyesinden yüksekliğin ve hareket ettiğin yönde yolun eğimi (çıkış/iniş).</span></div>
+        <div class="info-row"><span class="ms">landscape</span><span><b>Harita merkezi:</b> GPS kapalıyken ekranın ortasındaki noktanın rakımı ve arazinin dikliği.</span></div>
+        <div class="info-row"><span class="ms">show_chart</span><span><b>Küçük grafik:</b> son dakikalarda rakımının nasıl değiştiği.</span></div>
+      </div>
+      <div class="hud-actions">
+        ${r?.profile ? '<button class="btn primary" id="hx-ana"><span class="ms">insights</span>Rotanın eğim analizi</button>' : '<button class="btn primary" id="hx-dir"><span class="ms">directions</span>Rota oluştur, eğimini gör</button>'}
+        <button class="btn outline" id="hx-slope"><span class="ms">trending_up</span>${opts.slope ? 'Eğim haritasını kapat' : 'Eğim haritasını aç'}</button>
+        <button class="btn outline" id="hx-cont"><span class="ms">terrain</span>${opts.contours ? 'Eş yükselti eğrilerini kapat' : 'Eş yükselti eğrilerini aç'}</button>
+        <button class="btn outline" id="hx-loc"><span class="ms">my_location</span>Konumumu izle</button>
+      </div>`;
+    $('hx-ana')?.addEventListener('click', () => openAnalysis(r));
+    $('hx-dir')?.addEventListener('click', () => openDirections({}));
+    $('hx-slope').onclick = () => { $('opt-slope').click(); $('hx-slope').lastChild.textContent = opts.slope ? 'Eğim haritasını kapat' : 'Eğim haritasını aç'; };
+    $('hx-cont').onclick = () => { $('opt-contours').click(); $('hx-cont').lastChild.textContent = opts.contours ? 'Eş yükselti eğrilerini kapat' : 'Eş yükselti eğrilerini aç'; };
+    $('hx-loc').onclick = () => { closePanel(); locateMe(); };
+  }, { mode: 'list' });
+};

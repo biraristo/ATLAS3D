@@ -418,3 +418,55 @@ body.an-open .hud{visibility:hidden}
 }
 .an-sheet:focus{outline:none}
 .an-head .icon-btn:focus-visible,.an-tool:focus-visible,.an-map:focus-visible,.an-sc:focus-visible,.an-cmp-r:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+
+/* ================= Navigasyon arazi bandı (canlı) ================= */
+.nav-head .nav-terrain{display:block;position:relative;padding:20px 12px 10px;font-weight:400}
+.nt-top{display:flex;align-items:center;gap:8px}
+.nt-elev{display:flex;flex-direction:column;line-height:1.05;min-width:0}
+.nt-elev small{font-size:10px;letter-spacing:.8px;color:var(--muted);font-weight:500}
+.nt-elev b{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums}
+.nt-chip{display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:999px;font-size:13.5px;font-weight:500;white-space:nowrap;transition:background .4s,color .4s}
+.nt-chip .ms{font-size:18px}
+.nt-chip b{font-weight:700}
+.nt-ana{margin-left:auto;display:inline-flex;align-items:center;gap:4px;background:var(--blue-d);color:#fff;border-radius:999px;padding:6px 12px 6px 9px;font-size:13.5px;font-weight:500;box-shadow:0 1px 3px rgba(11,87,208,.35)}
+.nt-ana .ms{font-size:18px}
+.nt-prof{display:block;width:100%;height:44px;margin-top:8px}
+.nt-dot{position:absolute;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:#1a73e8;border:2px solid #fff;box-shadow:0 0 0 0 rgba(26,115,232,.5);animation:nt-pulse 1.8s ease-out infinite;transform:translateY(0);pointer-events:none}
+.nt-pw{position:relative;margin-top:8px}
+.nt-pw .nt-prof{margin-top:0}
+@keyframes nt-pulse{0%{box-shadow:0 0 0 0 rgba(26,115,232,.55)}70%{box-shadow:0 0 0 10px rgba(26,115,232,0)}100%{box-shadow:0 0 0 0 rgba(26,115,232,0)}}
+.nt-info{display:flex;justify-content:space-between;gap:8px;margin-top:4px;font-size:12.5px;color:#3c4043}
+.nt-info b{font-weight:600}
+.nt-win{color:var(--muted);white-space:nowrap}
+@media (prefers-reduced-motion:reduce){.nt-dot,.hud-live{animation:none}}
+
+/* ================= Rakım göstergesi (alt kart) ================= */
+button.hud{font:inherit;color:inherit;text-align:left;border:0;cursor:pointer;pointer-events:auto}
+.hud{gap:12px;padding:8px 10px 8px 8px;border-radius:16px;min-height:60px;width:auto;max-width:420px}
+.hud:hover{box-shadow:0 2px 6px rgba(60,64,67,.3),0 6px 16px 4px rgba(60,64,67,.15)}
+.hud-gauge{flex:none;width:44px;height:44px}
+.hud-ground{transform-origin:22px 22px;transform-box:view-box;transition:transform .8s cubic-bezier(.3,1.4,.5,1)}
+.hud-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.hud .hud-main>small:first-child{display:flex!important;align-items:center;gap:5px;font-size:10px;letter-spacing:.8px;color:var(--muted);font-weight:500;text-transform:uppercase}
+.hud-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.hud .hud-row b{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums}
+.hud-chip{display:inline-flex;align-items:center;gap:3px;padding:3px 9px 3px 6px;border-radius:999px;font-size:12.5px;font-weight:500;white-space:nowrap}
+.hud-chip b{font-weight:700;font-size:12.5px!important}
+.hud-chip .ms{font-size:16px}
+.hud-chip.muted{background:#f1f3f4;color:var(--muted)}
+.hud .hud-sub{display:block!important;font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:none;letter-spacing:0}
+.hud-live{width:7px;height:7px;border-radius:50%;background:#ea4335;animation:hud-blink 1.4s ease-in-out infinite}
+@keyframes hud-blink{50%{opacity:.25}}
+.hud-spark{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:1px}
+.hud-spark small{font-size:10px;color:var(--muted)}
+.hud-go{flex:none;color:var(--muted);font-size:20px!important}
+.hud-actions{display:flex;flex-direction:column;gap:8px;padding:16px 24px}
+.hud-actions .btn{justify-content:flex-start}
+@media (max-width:720px){
+  .hud{left:10px;right:62px;max-width:none;justify-content:flex-start}
+  .hud-spark small{display:none}
+}
+@media (max-width:720px){
+  body:not(.navigating):not(.panel-open) .maplibregl-ctrl-bottom-right{bottom:calc(84px + var(--safe-b))}
+}
+@media (max-width:720px){ body.panel-open .hud{display:none} }

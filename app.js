@@ -1108,7 +1108,7 @@ function wireDirResults() {
       const r = dir.routes[dir.sel], s = r.profile.steep[+el.dataset.k];
       const a = profileAt(r.profile, s.from).pt, b = profileAt(r.profile, s.to).pt;
       if (isMobile()) setSheet('min');
-      map.fitBounds([a, b], { padding: mapPadding(), pitch: 65, bearing: bearingOf(a, b) - 90, maxZoom: 16.5, duration: 1400 });
+      viewSegment(a, b);
     };
   });
   box.querySelectorAll('.step').forEach(s => {
@@ -1143,6 +1143,17 @@ async function computeRoute({ quiet = false, fromOverride = null } = {}) {
     if (!quiet) { dir.routes = []; dir.error = e.message; drawRoutes(); refreshDirResults(); }
     return false;
   }
+}
+// Bir rota kesitini (a → b) yandan, 3D olarak göster. fitBounds eğik görünümde ve büyük
+// kenar boşluklarında güvenilmez sonuç verebildiği için zoom doğrudan mesafeden hesaplanır.
+function viewSegment(a, b) {
+  if (!a || !b || !map) return;
+  if (map._elevationFreeze) map._elevationFreeze = false;
+  map.stop();
+  const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], len = Math.max(150, haversine(a, b));
+  const pad = mapPadding(), usable = Math.max(200, Math.min(innerWidth - pad.left - pad.right, (innerHeight - pad.top - pad.bottom) * 1.6));
+  const zoom = Math.max(8, Math.min(16.5, Math.log2(156543.03 * Math.cos(mid[1] * Math.PI / 180) * usable * 0.55 / len)));
+  map.flyTo({ center: mid, zoom, pitch: 60, bearing: (bearingOf(a, b) - 90 + 360) % 360, padding: pad, duration: 1400, essential: true });
 }
 function fitRoute() {
   const r = dir.routes[dir.sel]; if (!r) return;
@@ -1288,13 +1299,9 @@ async function navTick(force) {
   if (after && after.at - next.at < 150) { $('nav-next').hidden = false; $('nav-next').innerHTML = `Ardından <span class="ms">${after.icon}</span>`; }
   else $('nav-next').hidden = true;
   const remTime = r.duration * (remaining / Math.max(1, r.total));
-  if (r.profile) {
-    const p = profileAt(r.profile, along), ahead = profileAt(r.profile, Math.min(r.total, along + 120));
-    const sl = (ahead.elev - p.elev) / Math.max(1, Math.min(120, r.total - along)) * 100;
+  if (r.profile && typeof navTerrainHtml === 'function') {
     $('nav-terrain').hidden = false;
-    $('nav-terrain').innerHTML = `<span><span class="ms">landscape</span>${nf0.format(Math.round(p.elev))} m</span>
-      <span style="color:${slopeColor(sl)}"><span class="ms">${ARROW(sl)}</span>${fmtSlope(sl)} ${sl > 2 ? 'tırmanış' : sl < -2 ? 'iniş' : 'düz'}</span>
-      <span><span class="ms" style="color:#dc2626">arrow_upward</span>${nf0.format(Math.round(p.upLeft))} m</span><span><span class="ms" style="color:#2563eb">arrow_downward</span>${nf0.format(Math.round(p.downLeft))} m</span><span class="ms nt-more" aria-hidden="true">chevron_right</span>`;
+    $('nav-terrain').innerHTML = navTerrainHtml(r, along);
   }
   if (r.profile) for (const [k, st] of r.profile.steep.entries()) {
     const ahead = st.from - along, key = 'steep:' + k, warnAt = dir.mode === 'car' ? 500 : 150;
@@ -1339,10 +1346,8 @@ async function updateHud(lngLat, label) {
     const { elev, slope, aspect } = await DEM.slopeAt(lngLat[0], lngLat[1], map.getZoom() > 11 ? 13 : 11);
     if (seq !== hudSeq || elev == null) return;
     const dirName = aspect == null ? '' : COMPASS[Math.round(aspect / 45) % 8];
-    $('hud-elev').textContent = nf0.format(Math.round(elev)) + ' m';
-    $('hud-slope').innerHTML = slope == null ? '' : `<span class="ms" style="color:${slopeColor(slope)}">${slope > 3 ? 'trending_up' : 'trending_flat'}</span>${fmtSlope(slope).replace('+', '')} ${slope > 3 ? '· yokuş ' + dirName.toLowerCase() + ' yönüne' : 'düz'}`;
-    $('hud-label').textContent = label;
-    $('hud').hidden = false;
+    setHud({ source: label === 'İmleç' ? 'cursor' : 'center', elev, terrain: slope, aspect,
+      sub: slope == null ? '' : slope < 3 ? 'Düz arazi' : `Yamaç ${dirName.toLowerCase()} yönüne doğru yükseliyor` });
   } catch {}
 }
 const hudCenter = debounce(() => { if (!map || navActive || Date.now() < (typeof gpsHudUntil === 'number' ? gpsHudUntil : 0)) return; const c = map.getCenter(); updateHud([c.lng, c.lat], 'Merkez'); }, 250);

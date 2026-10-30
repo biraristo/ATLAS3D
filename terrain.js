@@ -157,7 +157,9 @@ meListeners.add(async () => {
   try {
     const here = [...meLngLat], elev = await DEM.at(here[0], here[1], 13);
     if (elev == null) return;
-    gpsTrail.push({ p: here, e: elev, t: Date.now() });
+    // Yerinde dururken GPS titremesi izi doldurmasın: en az 8 m hareket edince yeni nokta
+    const last = gpsTrail[gpsTrail.length - 1];
+    if (!last || haversine(last.p, here) >= 8) gpsTrail.push({ p: here, e: elev, t: Date.now() }); else { last.e = elev; last.t = Date.now(); }
     while (gpsTrail.length > 60 || (gpsTrail.length && Date.now() - gpsTrail[0].t > 180000)) gpsTrail.shift();
     // ~40 m ve üzeri yol katedilmişse eğimi hesapla
     let ref = null, dist = 0;
@@ -165,9 +167,8 @@ meListeners.add(async () => {
     const g = ref ? (elev - ref.e) / dist * 100 : null;
     if (navActive) return;
     gpsHudUntil = Date.now() + 20000;
-    $('hud-label').textContent = 'Konumunuz';
-    $('hud-elev').textContent = nf0.format(Math.round(elev)) + ' m';
-    $('hud-slope').innerHTML = g == null ? 'hareket bekleniyor' : `<span class="ms" style="color:${slopeColor(g)}">${ARROW(g)}</span><span style="color:${slopeColor(g)}">${g > 2 ? 'Çıkıyorsunuz' : g < -2 ? 'İniyorsunuz' : 'Düz yol'} ${fmtSlope(g)}</span>`;
-    $('hud').hidden = false;
+    HUD.trail = gpsTrail.map(x => x.e);
+    HUD.trailDist = gpsTrail.reduce((s, x, k) => k ? s + haversine(gpsTrail[k - 1].p, x.p) : 0, 0);
+    setHud({ source: 'gps', elev, grade: g, sub: ref ? `Son ${fmtDist(dist)}'de ${elev - ref.e >= 0 ? '+' : '−'}${nf0.format(Math.abs(Math.round(elev - ref.e)))} m` : 'Konum alındı, rakım canlı izleniyor' });
   } finally { gpsBusy = false; }
 });

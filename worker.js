@@ -270,7 +270,7 @@ function ttToOsrm(rt, avoid) {
     const pi = Math.min(it.pointIndex ?? 0, pts.length - 1), loc = [it.point?.longitude ?? pts[pi][0], it.point?.latitude ?? pts[pi][1]];
     return {
       maneuver: { type, modifier: mod, location: loc, bearing_after: pts[pi + 1] ? ttBearing(pts[pi], pts[pi + 1]) : 0, exit: it.roundaboutExitNumber },
-      name: it.street || '', ref: (it.roadNumbers || []).join(' / '), destinations: it.signpostText || '',
+      name: it.street || '', ref: (it.roadNumbers || []).join(' / '), destinations: it.signpostText || '', mode: it.maneuver === 'TAKE_FERRY' ? 'ferry' : 'driving',
       distance: nx ? nx.routeOffsetInMeters - it.routeOffsetInMeters : 0, duration: nx ? nx.travelTimeInSeconds - it.travelTimeInSeconds : 0
     };
   });

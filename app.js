@@ -481,12 +481,14 @@ function addOwnSourcesAndLayers() {
   const round = { 'line-join': 'round', 'line-cap': 'round' };
   add({ id: 'a3-route-alt-casing', type: 'line', source: 'a3-routes', filter: ['==', ['get', 'sel'], false], layout: round, paint: { 'line-color': '#7f9cd6', 'line-width': W(6, 12) } });
   add({ id: 'a3-route-alt', type: 'line', source: 'a3-routes', filter: ['==', ['get', 'sel'], false], layout: round, paint: { 'line-color': '#bccefb', 'line-width': W(4, 9) } });
+  add({ id: 'a3-route-alt-hit', type: 'line', source: 'a3-routes', filter: ['==', ['get', 'sel'], false], layout: round, paint: { 'line-color': '#000', 'line-opacity': 0, 'line-width': 26 } });
+  add({ id: 'a3-route-alt-lbl', type: 'symbol', source: 'a3-routes', filter: ['all', ['==', ['get', 'sel'], false], ['has', 'lbl']], layout: { 'symbol-placement': 'line-center', 'text-field': ['get', 'lbl'], 'text-size': 13, 'text-font': ['Noto Sans Bold'], 'text-allow-overlap': true, 'text-rotation-alignment': 'viewport', 'text-pitch-alignment': 'viewport' }, paint: { 'text-color': '#1a3a6b', 'text-halo-color': '#ffffff', 'text-halo-width': 3 } }, undefined);
   add({ id: 'a3-route-casing', type: 'line', source: 'a3-route-sel', layout: round, paint: { 'line-color': '#ffffff', 'line-width': W(8, 15), 'line-opacity': 0.9 } });
   add({ id: 'a3-route', type: 'line', source: 'a3-route-sel', layout: round, paint: { 'line-color': '#4285f4', 'line-width': W(5, 10) } });
   add({ id: 'a3-route-dir', type: 'symbol', source: 'a3-route-sel', layout: { 'symbol-placement': 'line', 'symbol-spacing': 90, 'text-field': '▶', 'text-size': 11, 'text-keep-upright': false, 'text-allow-overlap': true, 'text-ignore-placement': true, 'text-font': ['Noto Sans Bold'] }, paint: { 'text-color': '#ffffff', 'text-opacity': 0.9 } }, undefined);
   add({ id: 'a3-measure-line', type: 'line', source: 'a3-measure', layout: { 'line-cap': 'round' }, paint: { 'line-color': '#202124', 'line-width': 2.5, 'line-dasharray': [2, 1.5] } }, undefined);
-  for (const id of ['a3-route-alt', 'a3-route-alt-casing']) {
-    map.on('click', id, e => { const i = e.features?.[0]?.properties?.i; if (i != null && !navActive) { selectRoute(+i); e.preventDefault(); } });
+  for (const id of ['a3-route-alt', 'a3-route-alt-casing', 'a3-route-alt-hit', 'a3-route-alt-lbl']) {
+    map.on('click', id, e => { const i = e.features?.[0]?.properties?.i; if (i == null || e.defaultPrevented) return; e.preventDefault(); if (navActive) switchNavRoute(+i); else selectRoute(+i); });
     map.on('mouseenter', id, () => { map.getCanvas().style.cursor = 'pointer'; });
     map.on('mouseleave', id, () => { map.getCanvas().style.cursor = ''; });
   }
@@ -1081,7 +1083,7 @@ function dirResultsHtml() {
         <div class="via">${r.summaryText ? esc(r.summaryText) + ' üzerinden' : ''}${!hasTr && i === 0 && dir.routes.length > 1 ? ' · En hızlı rota' : ''}</div>
         <div class="via">Tahmini varış: ${fmtClock(new Date(now + T(r) * 1000))}${r.traffic && r.traffic.delay >= 60 ? ` · trafiksiz ${fmtDur(r.traffic.free || r.duration)}` : ''}</div>
         ${typeof trafficOptHtml === 'function' ? trafficOptHtml(r, i) : ''}
-        ${r.tolls ? `<div class="via toll-line">${r.tolls.total > 0 ? `<span class="toll-chip"><span class="ms">toll</span>${fmtTL(r.tolls.total)} geçiş ücreti</span>` : '<span class="toll-chip free"><span class="ms">money_off</span>Ücretsiz</span>'}${dir.routes.length > 1 && dir.routes.some(x => x.tolls && x.tolls.total !== r.tolls.total) && r.tolls.total === Math.min(...dir.routes.map(x => x.tolls?.total ?? Infinity)) ? '<span class="toll-best">En ucuz</span>' : ''}</div>` : ''}
+        ${r.tolls ? `<div class="via toll-line">${r.tolls.items.some(x => x.kind === 'feribot') ? '<span class="toll-chip"><span class="ms">directions_boat</span>Feribot</span>' : ''}${r.tolls.total > 0 ? `<span class="toll-chip"><span class="ms">toll</span>${fmtTL(r.tolls.total)} geçiş ücreti</span>` : '<span class="toll-chip free"><span class="ms">money_off</span>Ücretsiz</span>'}${dir.routes.length > 1 && dir.routes.some(x => x.tolls && x.tolls.total !== r.tolls.total) && r.tolls.total === Math.min(...dir.routes.map(x => x.tolls?.total ?? Infinity)) ? '<span class="toll-best">En ucuz</span>' : ''}</div>` : ''}
         ${r.profile ? `<div class="via climb"><span style="color:#dc2626">↑ ${nf0.format(Math.round(r.profile.ascent))} m</span> <span style="color:#2563eb">↓ ${nf0.format(Math.round(r.profile.descent))} m</span>${r.profile.steep.length ? ` · ${r.profile.steep.length} dik bölüm` : ''}${r.profile.tAdj ? ` · eğime göre ~${fmtDur(r.profile.tAdj)}` : ''}</div>` : ''}
         ${i === dir.sel ? `<div class="btns"><button class="btn primary" id="nav-start"><span class="ms">navigation</span>Başlat</button><button class="btn outline" id="steps-toggle"><span class="ms">list</span>${dir.showSteps ? 'Adımları gizle' : 'Adımlar'}</button><button class="btn outline" id="fly-btn" title="Rotayı 3D önizle"><span class="ms">3d_rotation</span>3D önizle</button><button class="btn outline" id="dir-share" aria-label="Paylaş"><span class="ms">share</span></button></div>` : ''}
       </div>
@@ -1101,11 +1103,12 @@ function dirResultsHtml() {
 function tollSectionHtml(r) {
   const t = r.tolls;
   if (!t.items.length) return `<div class="toll-sec"><div class="toll-h"><span class="ms" style="color:#188038">money_off</span><b>Bu rota ücretsiz</b></div><p class="toll-fine">Rotada ücretli otoyol, köprü veya tünel yok.</p></div>`;
-  const icon = k => k === 'köprü' ? 'architecture' : k === 'tünel' ? 'subway' : 'toll';
+  const icon = k => k === 'köprü' ? 'architecture' : k === 'tünel' ? 'subway' : k === 'feribot' ? 'directions_boat' : 'toll';
+  const ferry = t.items.some(i => i.kind === 'feribot');
   return `<div class="toll-sec">
     <div class="toll-h"><span class="ms">toll</span><b>Geçiş ücretleri</b><span class="toll-total">${fmtTL(t.total)}</span></div>
-    <ol class="toll-list">${t.items.map(i => `<li><span class="ms">${icon(i.kind)}</span><span class="tl-m"><b>${esc(i.name)}</b><small>${fmtDist(i.at)} sonra${i.km ? ' · ' + nf0.format(Math.round(i.km)) + ' km ücretli yol' : ''}${i.note ? ' · ' + esc(i.note) : ''}</small></span><span class="tl-p">${fmtTL(i.price)}</span></li>`).join('')}</ol>
-    <p class="toll-fine">1. sınıf otomobil, KGM ${TOLL_DATE} tarifesi. Ödeme HGS veya OGS ile otomatik alınır; gişelerde nakit kabul edilmez. Ücret, girdiğin ve çıktığın gişeye göre biraz farklı olabilir.</p>
+    <ol class="toll-list">${t.items.map(i => `<li><span class="ms">${icon(i.kind)}</span><span class="tl-m"><b>${esc(i.name)}</b><small>${fmtDist(i.at)} sonra${i.km ? ' · ' + nf0.format(Math.round(i.km)) + ' km ücretli yol' : ''}${i.note ? ' · ' + esc(i.note) : ''}${i.url ? ` · <a href="${esc(i.url)}" target="_blank" rel="noopener">Güncel sefer saatleri</a>` : ''}</small></span><span class="tl-p">${i.price == null ? '?' : fmtTL(i.price)}</span></li>`).join('')}</ol>
+    <p class="toll-fine">1. sınıf otomobil, KGM ${TOLL_DATE} tarifesi. Ödeme HGS veya OGS ile otomatik alınır; gişelerde nakit kabul edilmez. Ücret, girdiğin ve çıktığın gişeye göre biraz farklı olabilir.${ferry ? ` Feribot ücreti otomobil + sürücü, tek yön (${FERRY_DATE} tarifesi). Sefer bekleme süresi tahmini süreye dahil değildir.` : ''}</p>
   </div>`;
 }
 function wireDirResults() {
@@ -1205,7 +1208,7 @@ function fitRoute() {
 function selectRoute(i) { dir.sel = i; dir.showSteps = false; drawRoutes(); refreshDirResults(); }
 function drawRoutes() {
   const src = map?.getSource('a3-routes'), sel = map?.getSource('a3-route-sel'); if (!src || !sel) return;
-  const feats = dir.routes.map((r, i) => ({ type: 'Feature', properties: { i, sel: i === dir.sel, mode: dir.mode }, geometry: { type: 'LineString', coordinates: r.coords } })).filter(f => !f.properties.sel);
+  const feats = dir.routes.map((r, i) => ({ type: 'Feature', properties: { i, sel: i === dir.sel, mode: dir.mode, ...(navActive && i !== dir.sel ? { lbl: altLabel(r) } : {}) }, geometry: { type: 'LineString', coordinates: r.coords } })).filter(f => !f.properties.sel);
   src.setData({ type: 'FeatureCollection', features: feats });
   const r = dir.routes[dir.sel];
   sel.setData(r ? { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: r.coords } } : EMPTY);
@@ -1268,14 +1271,56 @@ function prepRoute(r) {
     const loc = s.maneuver.location; let best = ci, bd = Infinity;
     for (let j = ci; j < coords.length; j++) { const d = Math.abs(coords[j][0] - loc[0]) + Math.abs(coords[j][1] - loc[1]); if (d < bd) { bd = d; best = j; } if (d < 1e-7) break; }
     ci = best;
-    steps.push({ text, icon, name: s.name || '', ref: s.ref || '', distance: s.distance, duration: s.duration, loc, at: cum[best], bearing: s.maneuver.bearing_after, type: s.maneuver.type });
+    steps.push({ text, icon, name: s.name || '', ref: s.ref || '', distance: s.distance, duration: s.duration, loc, at: cum[best], bearing: s.maneuver.bearing_after, type: s.maneuver.type, mode: s.mode || 'driving' });
   }
   const out = { ...r, coords, cum, steps, total: cum[cum.length - 1] };
   if (typeof computeTolls === 'function') try { out.tolls = computeTolls(out); } catch (e) { console.warn('ücret', e); }
+  if (typeof addFerries === 'function') try { addFerries(out); } catch (e) { console.warn('feribot', e); }
   return out;
 }
 
 /* ================= Navigasyon ================= */
+// Navigasyon sırasında haritadaki diğer rotalar: üzerlerinde süre farkı yazar, dokununca o rotaya geçilir
+let navAltAt = 0, navAltBusy = false;
+function navRemaining(r) {
+  const rem = Math.max(0, r.total - (r === navRoute ? navAlong : 0));
+  return (typeof trafficRemTime === 'function' && trafficRemTime(r, 0, rem)) || r.duration * rem / Math.max(1, r.total);
+}
+function altLabel(r) {
+  const d = Math.round((navRemaining(r) - navRemaining(navRoute)) / 60);
+  return Math.abs(d) < 1 ? 'Aynı süre' : d > 0 ? `+${fmtDur(d * 60)}` : `${fmtDur(-d * 60)} daha hızlı`;
+}
+async function navAltRefresh() {
+  if (!navActive || navAltBusy || !meLngLat || !dir.to) return;
+  navAltBusy = true; navAltAt = Date.now();
+  try {
+    const coords = `${meLngLat[0].toFixed(6)},${meLngLat[1].toFixed(6)};${dir.to.lon.toFixed(6)},${dir.to.lat.toFixed(6)}`;
+    const res = await fetch('/api/route?' + new URLSearchParams({ mode: dir.mode, alt: '1', coords }));
+    const d = res.ok ? await res.json() : null;
+    if (!navActive || !d?.routes?.length) return;
+    let alts = d.routes.map(prepRoute);
+    if (typeof fetchTomTomRoutes === 'function') { const tt = await fetchTomTomRoutes(coords, new AbortController(), dir.mode).catch(() => null); if (tt) alts.push(...tt.main.map(prepRoute)); }
+    if (!navActive) return;
+    const keep = [];
+    for (const r of alts) if ([navRoute, ...keep].every(x => trOverlap(x, r) < 0.8)) keep.push(r);
+    dir.routes = [navRoute, ...keep.slice(0, 3)]; dir.sel = 0;
+    drawRoutes(); loadProfiles();
+  } catch (e) { console.warn('alternatif', e); }
+  finally { navAltBusy = false; }
+}
+function switchNavRoute(i) {
+  const r = dir.routes[i]; if (!r || r === navRoute || !meLngLat) return;
+  const keepIdx = navLastIdx; navLastIdx = 0;
+  const s = snap(r, meLngLat);
+  if (s.off > 120) { navLastIdx = keepIdx; toast('Bu rota artık konumunuzdan geçmiyor. Alternatifler konumunuza göre yenileniyor…', 4000); navAltRefresh(); return; }
+  navRoute = r; dir.sel = i; navAnnounced = new Set(); navFollow = true;
+  drawRoutes(); if (typeof drawTraffic === 'function') drawTraffic();
+  const t = navRemaining(r) * (1 - s.along / Math.max(1, r.total));
+  toast(`Rota değiştirildi · varış ${fmtClock(new Date(Date.now() + t * 1000))}`, 4000);
+  say('Yeni rotaya geçildi');
+  navTick(true);
+}
+
 let navAlong = 0, navCamAt = 0, navActive = false, navBearing = null, navRoute = null, navAnnounced = new Set(), navOff = 0, navFollow = true, navMuted = store.get('muted', false), wakeLock = null, navLastIdx = 0, rerouting = false;
 async function startNav() {
   if (!dir.routes[dir.sel]) return;
@@ -1291,6 +1336,7 @@ async function startNav() {
   $('nav-mute-icon').textContent = navMuted ? 'volume_off' : 'volume_up';
   try { wakeLock = await navigator.wakeLock?.request('screen'); } catch {}
   meListeners.add(navTick); navTick(true);
+  navAltAt = Date.now(); drawRoutes(); setTimeout(() => navAltRefresh(), 60000);
   say(navRoute.steps[0]?.text.replace(' — ', ', ') || 'Navigasyon başladı');
 }
 function stopNav() {
@@ -1334,7 +1380,7 @@ async function navTick(force) {
     rerouting = true; $('nav-text').textContent = 'Rota yeniden hesaplanıyor…'; say('Rota yeniden hesaplanıyor');
     const ok = await computeRoute({ quiet: true, fromOverride: { lat: meLngLat[1], lon: meLngLat[0], name: 'Konumunuz', me: true } });
     rerouting = false; navOff = 0;
-    if (ok) { navRoute = dir.routes[0]; dir.sel = 0; navAnnounced = new Set(); navLastIdx = 0; drawRoutes(); }
+    if (ok) { navRoute = dir.routes[0]; dir.sel = 0; navAnnounced = new Set(); navLastIdx = 0; drawRoutes(); navAltRefresh(); }
     return;
   }
   const along = s.along, remaining = Math.max(0, r.total - along); navAlong = along;
@@ -1350,6 +1396,7 @@ async function navTick(force) {
   else $('nav-next').hidden = true;
   const remTime = (typeof trafficRemTime === 'function' && trafficRemTime(r, along, remaining)) || r.duration * (remaining / Math.max(1, r.total));
   if (typeof trafficNavTick === 'function') trafficNavTick(r, along);
+  if (Date.now() - navAltAt > 300000 && remaining > 3000) navAltRefresh();
   if (r.profile && typeof navTerrainHtml === 'function') {
     $('nav-terrain').hidden = false;
     $('nav-terrain').innerHTML = navTerrainHtml(r, along);

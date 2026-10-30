@@ -223,9 +223,9 @@ function mergeTomTomRoutes(tt, ctrl, mode, a, b) {
   const tt0 = r => r.traffic?.travel ?? r.duration;
   // Önce ücretli yol içermeyen rota (mevcutların hepsi ücretliyse)
   let freeAdded = false;
-  if (tt.free[0] && !all().some(x => x.tolls && x.tolls.total === 0)) {
+  if (tt.free[0] && !all().some(x => x.tolls && !x.tolls.items.some(i => i.kind !== 'feribot'))) {
     const r = prepRoute(tt.free[0]);
-    if (r.tolls) r.tolls = { ...r.tolls, total: 0, items: [] }; // TomTom ücretli yollardan kaçındı
+    if (r.tolls) { const f = r.tolls.items.filter(i => i.kind === 'feribot'); r.tolls = { ...r.tolls, items: f, total: f.reduce((t, i) => t + (i.price || 0), 0) }; } // TomTom ücretli yollardan kaçındı (feribot hariç)
     if (differs(r, 0.97)) { add.push(r); freeAdded = true; }
   }
   // Sonra trafiğe göre farklı yol: yalnızca gerçekten rekabetçiyse (en hızlıdan en fazla %15 yavaş)

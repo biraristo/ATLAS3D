@@ -175,7 +175,7 @@ function onMapLoad() {
   addOwnSourcesAndLayers();
   handleUrlParams();
   updateTilt(); updateCompass();
-  cfgReady.then(c => { if (c.googleTilesKey) addGoogleBasemap(); });
+  cfgReady.then(c => { if (c.google) addGoogleBasemap(); });
   map.on('moveend', debounce(() => {
     if (navActive) return;
     const c = map.getCenter();
@@ -797,6 +797,7 @@ function renderPlace(el, p) {
   $('pl-near').onclick = () => { map.easeTo({ center: [p.lon, p.lat], zoom: Math.max(map.getZoom(), 15), padding: mapPadding() }); map.once('moveend', () => nearby(NEARBY[0])); };
   $('pl-share').onclick = () => share(p.name, placeUrl(p));
   el.querySelectorAll('[data-copy]').forEach(r => { r.onclick = () => copy(r.dataset.copy); });
+  if (typeof gEnrich === 'function') gEnrich(el, p);
 }
 function placeUrl(p) {
   const u = new URL(location.origin + '/');
@@ -1496,7 +1497,8 @@ async function openGoogle3D() {
     }
     if (!gViewer) {
       gViewer = new Cesium.Viewer('g3d-view', { globe: false, baseLayer: false, animation: false, timeline: false, geocoder: false, homeButton: false, sceneModePicker: false, navigationHelpButton: false, infoBox: false, selectionIndicator: false, fullscreenButton: false, baseLayerPicker: false });
-      gViewer.scene.primitives.add(await Cesium.createGooglePhotorealistic3DTileset({ key: cfg.googleTilesKey }, { showCreditsOnScreen: true }));
+      // Karolar sunucumuz üzerinden gelir; Google anahtarı tarayıcıya hiç inmez
+      gViewer.scene.primitives.add(await Cesium.Cesium3DTileset.fromUrl(location.origin + '/v1/3dtiles/root.json', { showCreditsOnScreen: true }));
     }
     const c = map.getCenter();
     gViewer.camera.flyTo({ destination: Cesium.Cartesian3.fromDegrees(c.lng, c.lat, 1200), orientation: { heading: Cesium.Math.toRadians(map.getBearing()), pitch: Cesium.Math.toRadians(-40), roll: 0 }, duration: 1.2 });

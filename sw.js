@@ -6,7 +6,7 @@ const SHELL = 'atlas3d-shell-' + VERSION;
 const LIBS = 'atlas3d-libs-' + VERSION;
 const TILES = 'atlas3d-tiles-' + VERSION;
 const TILE_LIMIT = 2500;
-const SHELL_FILES = ['/', '/style.css', '/app.js', '/terrain.js', '/analysis.js', '/tolls.js', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
+const SHELL_FILES = ['/', '/style.css', '/app.js', '/terrain.js', '/analysis.js', '/tolls.js', '/traffic.js', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(SHELL).then(c => c.addAll(SHELL_FILES.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));

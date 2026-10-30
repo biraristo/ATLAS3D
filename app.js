@@ -1070,14 +1070,15 @@ function dirResultsHtml() {
   if (dir.loading) return '<div class="loading"><div class="spinner"></div>Rota hesaplanıyor…</div>';
   if (dir.error) return `<div class="empty">${esc(dir.error)}</div>`;
   if (!dir.routes.length) return `<div class="empty">Başlangıç ve hedef seçin.<br><small>Haritada sağ tıklayarak (mobilde basılı tutarak) da nokta seçebilirsiniz.</small></div>`;
-  const now = Date.now(), fastest = Math.min(...dir.routes.map(r => r.duration));
+  const now = Date.now(), T = r => (typeof trTime === 'function' ? trTime(r) : r.duration), fastest = Math.min(...dir.routes.map(T)), hasTr = dir.routes.some(r => r.traffic);
   const opt = dir.routes.map((r, i) => `
     <div class="route-opt ${i === dir.sel ? 'on' : ''}" data-i="${i}">
       <span class="ms">${MODES[dir.mode].icon}</span>
       <div style="flex:1">
-        <div><span class="t ${r.duration > fastest * 1.15 ? 'slow' : ''}">${fmtDur(r.duration)}</span><span class="d">${fmtDist(r.distance)}</span></div>
-        <div class="via">${r.summaryText ? esc(r.summaryText) + ' üzerinden' : ''}${i === 0 && dir.routes.length > 1 ? ' · En hızlı rota' : ''}</div>
-        <div class="via">Tahmini varış: ${fmtClock(new Date(now + r.duration * 1000))}</div>
+        <div><span class="t ${T(r) > fastest * 1.15 ? 'slow' : ''}">${fmtDur(T(r))}</span><span class="d">${fmtDist(r.distance)}</span></div>
+        <div class="via">${r.summaryText ? esc(r.summaryText) + ' üzerinden' : ''}${!hasTr && i === 0 && dir.routes.length > 1 ? ' · En hızlı rota' : ''}</div>
+        <div class="via">Tahmini varış: ${fmtClock(new Date(now + T(r) * 1000))}${r.traffic && r.traffic.delay >= 60 ? ` · trafiksiz ${fmtDur(r.traffic.free || r.duration)}` : ''}</div>
+        ${typeof trafficOptHtml === 'function' ? trafficOptHtml(r, i) : ''}
         ${r.tolls ? `<div class="via toll-line">${r.tolls.total > 0 ? `<span class="toll-chip"><span class="ms">toll</span>${fmtTL(r.tolls.total)} geçiş ücreti</span>` : '<span class="toll-chip free"><span class="ms">money_off</span>Ücretsiz</span>'}${dir.routes.length > 1 && dir.routes.some(x => x.tolls && x.tolls.total !== r.tolls.total) && r.tolls.total === Math.min(...dir.routes.map(x => x.tolls?.total ?? Infinity)) ? '<span class="toll-best">En ucuz</span>' : ''}</div>` : ''}
         ${r.profile ? `<div class="via climb"><span style="color:#dc2626">↑ ${nf0.format(Math.round(r.profile.ascent))} m</span> <span style="color:#2563eb">↓ ${nf0.format(Math.round(r.profile.descent))} m</span>${r.profile.steep.length ? ` · ${r.profile.steep.length} dik bölüm` : ''}${r.profile.tAdj ? ` · eğime göre ~${fmtDur(r.profile.tAdj)}` : ''}</div>` : ''}
         ${i === dir.sel ? `<div class="btns"><button class="btn primary" id="nav-start"><span class="ms">navigation</span>Başlat</button><button class="btn outline" id="steps-toggle"><span class="ms">list</span>${dir.showSteps ? 'Adımları gizle' : 'Adımlar'}</button><button class="btn outline" id="fly-btn" title="Rotayı 3D önizle"><span class="ms">3d_rotation</span>3D önizle</button><button class="btn outline" id="dir-share" aria-label="Paylaş"><span class="ms">share</span></button></div>` : ''}
@@ -1092,7 +1093,8 @@ function dirResultsHtml() {
   const steps = dir.showSteps ? `<div class="step-sum">${esc(dir.from.name)} → ${esc(dir.to.name)}</div><ol class="steps">${r.steps.map((s, i) => `<li class="step" data-s="${i}"><span class="ms">${s.icon}</span><div>${esc(s.text)}<div class="sd">${s.distance > 0 ? fmtDist(s.distance) : ''}${dE(s.dElev)}</div></div></li>`).join('')}</ol>` : '';
   const tollHtml = r.tolls && dir.mode === 'car' ? tollSectionHtml(r) : '';
   const altNote = dir.altPending ? '<div class="alt-pending"><span class="spinner sm"></span>Alternatif rotalar aranıyor…</div>' : '';
-  return opt + altNote + tollHtml + prof + steepHtml + steps + '<div class="mini-note">Süreler trafik içermez. Yükseklik verisi ~30 m çözünürlüklü arazi modelinden hesaplanır.</div>';
+  const trHtml = typeof trafficSectionHtml === 'function' ? trafficSectionHtml(r) : '';
+  return opt + altNote + trHtml + tollHtml + prof + steepHtml + steps + `<div class="mini-note">${hasTr ? 'Süreler canlı trafiği içerir (TomTom).' : 'Süreler trafik içermez.'} Yükseklik verisi ~30 m çözünürlüklü arazi modelinden hesaplanır.</div>`;
 }
 function tollSectionHtml(r) {
   const t = r.tolls;
@@ -1117,6 +1119,7 @@ function wireDirResults() {
   });
   $('fly-btn')?.addEventListener('click', () => flyover(dir.routes[dir.sel]));
   $('ana-open')?.addEventListener('click', () => openAnalysis(dir.routes[dir.sel]));
+  if (typeof wireTraffic === 'function') wireTraffic(box);
   box.querySelectorAll('.steep').forEach(el => {
     el.onclick = () => {
       const r = dir.routes[dir.sel], s = r.profile.steep[+el.dataset.k];
@@ -1202,9 +1205,11 @@ function drawRoutes() {
   sel.setData(r ? { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: r.coords } } : EMPTY);
   if (r?.profile) map.setPaintProperty('a3-route', 'line-gradient', ['interpolate', ['linear'], ['line-progress'], ...profileGradientStops(r.profile).flat()]);
   else map.setPaintProperty('a3-route', 'line-gradient', ['interpolate', ['linear'], ['line-progress'], 0, '#4285f4', 1, '#4285f4']);
+  if (typeof drawTraffic === 'function') drawTraffic();
 }
 async function loadProfiles() {
   const routes = dir.routes;
+  if (typeof loadTraffic === 'function') loadTraffic(routes);
   await Promise.all(routes.map(async r => { try { r.profile = await buildProfile(r); } catch (e) { console.warn('profil', e); r.profile = null; } }));
   if (dir.routes !== routes) return;
   for (const r of routes) if (r.profile) for (const s of r.steps) { const a = profileAt(r.profile, s.at), b = profileAt(r.profile, Math.min(r.total, s.at + s.distance)); s.dElev = b.elev - a.elev; }
@@ -1337,7 +1342,8 @@ async function navTick(force) {
   const after = r.steps[nextIdx + 1];
   if (after && after.at - next.at < 150) { $('nav-next').hidden = false; $('nav-next').innerHTML = `Ardından <span class="ms">${after.icon}</span>`; }
   else $('nav-next').hidden = true;
-  const remTime = r.duration * (remaining / Math.max(1, r.total));
+  const remTime = (typeof trafficRemTime === 'function' && trafficRemTime(r, along, remaining)) || r.duration * (remaining / Math.max(1, r.total));
+  if (typeof trafficNavTick === 'function') trafficNavTick(r, along);
   if (r.profile && typeof navTerrainHtml === 'function') {
     $('nav-terrain').hidden = false;
     $('nav-terrain').innerHTML = navTerrainHtml(r, along);

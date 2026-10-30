@@ -127,18 +127,78 @@ const routes = {
   }
 };
 
+
+/* ================= Canlı trafik (TomTom) =================
+   Anahtar (TOMTOM_API_KEY) yalnızca Cloudflare'de gizli değişken olarak tutulur, tarayıcıya gitmez.
+   /api/traffic/flow/{z}/{x}/{y}.png        trafik akış karosu (2 dk önbellek)
+   /api/traffic/incidents/{z}/{x}/{y}.png   kaza / yol çalışması karosu (2 dk önbellek)
+   POST /api/traffic/route  { points: [[lon,lat],...] }  → güzergâhın trafikli süresi ve sıkışık kesimleri */
+async function traffic(request, url, env, ctx) {
+  const key = env.TOMTOM_API_KEY;
+  if (!key) return json({ error: 'traffic-disabled' }, 404);
+  const base = (env.TOMTOM_BASE || 'https://api.tomtom.com').replace(/\/$/, '');
+  const tile = url.pathname.match(/^\/api\/traffic\/(flow|incidents)\/(\d{1,2})\/(\d+)\/(\d+)\.png$/);
+  if (tile) {
+    const [, kind, z, x, y] = tile;
+    if (+z < 5 || +z > 18) return new Response(null, { status: 204 });
+    const cacheKey = new Request(`https://atlas3d.cache/traffic/${kind}/${z}/${x}/${y}`);
+    const hit = await caches.default.match(cacheKey); if (hit) return hit;
+    const up = kind === 'flow'
+      ? `${base}/traffic/map/4/tile/flow/relative0/${z}/${x}/${y}.png?tileSize=256&thickness=8&key=${key}`
+      : `${base}/traffic/map/4/tile/incidents/s3/${z}/${x}/${y}.png?tileSize=256&key=${key}`;
+    const r = await fetch(up);
+    if (!r.ok) return new Response(null, { status: r.status === 403 || r.status === 429 ? 204 : 502 });
+    const res = new Response(r.body, { headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=120' } });
+    ctx.waitUntil(caches.default.put(cacheKey, res.clone()));
+    return res;
+  }
+  if (url.pathname === '/api/traffic/route' && request.method === 'POST') {
+    const body = await request.json().catch(() => null);
+    const pts = Array.isArray(body?.points) ? body.points.filter(p => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite)).slice(0, 400) : [];
+    if (pts.length < 2) return json({ error: 'points' }, 400);
+    const sig = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(pts.map(p => p[0].toFixed(4) + ',' + p[1].toFixed(4)).join(';')));
+    const cacheKey = new Request('https://atlas3d.cache/traffic/route/' + [...new Uint8Array(sig)].map(b => b.toString(16).padStart(2, '0')).join(''));
+    const hit = await caches.default.match(cacheKey); if (hit) return hit;
+    const a = pts[0], b = pts[pts.length - 1];
+    const up = `${base}/routing/1/calculateRoute/${a[1]},${a[0]}:${b[1]},${b[0]}/json?key=${key}&traffic=true&travelMode=car&sectionType=traffic&computeTravelTimeFor=all&routeRepresentation=polyline`;
+    const r = await fetch(up, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ supportingPoints: pts.map(p => ({ latitude: p[1], longitude: p[0] })) }) });
+    if (!r.ok) return json({ error: 'upstream ' + r.status }, r.status === 429 ? 429 : 502);
+    const d = await r.json(), route = d.routes?.[0];
+    if (!route) return json({ error: 'no-route' }, 502);
+    const points = (route.legs || []).flatMap(l => l.points || []).map(p => [p.longitude, p.latitude]);
+    const s = route.summary || {};
+    const out = {
+      length: s.lengthInMeters, travel: s.travelTimeInSeconds, delay: s.trafficDelayInSeconds || 0,
+      noTraffic: s.noTrafficTravelTimeInSeconds ?? null, historic: s.historicTrafficTravelTimeInSeconds ?? null, trafficLength: s.trafficLengthInMeters || 0,
+      sections: (route.sections || []).filter(x => x.sectionType === 'TRAFFIC').map(x => ({
+        cat: x.simpleCategory || 'OTHER', speed: x.effectiveSpeedInKmh ?? null, delay: x.delayInSeconds || 0, mag: x.magnitudeOfDelay ?? 0,
+        cause: x.tec?.causes?.[0]?.mainCauseCode ?? null, coords: points.slice(x.startPointIndex, (x.endPointIndex ?? x.startPointIndex) + 1)
+      })),
+      at: Date.now()
+    };
+    const res = new Response(JSON.stringify(out), { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=120' } });
+    ctx.waitUntil(caches.default.put(cacheKey, res.clone()));
+    return res;
+  }
+  return json({ error: 'not-found' }, 404);
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname === '/api/health') {
-      return json({ status: 'ok', keylessMode: true, runtimeGoogleKeyConfigured: Boolean(env.GOOGLE_MAPS_API_KEY), runtimeMaptilerKeyConfigured: Boolean(env.MAPTILER_API_KEY) });
+      return json({ status: 'ok', keylessMode: true, runtimeGoogleKeyConfigured: Boolean(env.GOOGLE_MAPS_API_KEY), runtimeMaptilerKeyConfigured: Boolean(env.MAPTILER_API_KEY), trafficConfigured: Boolean(env.TOMTOM_API_KEY) });
     }
     if (url.pathname === '/api/config') {
       const cf = request.cf || {};
       return json({
-        maptilerKey: env.MAPTILER_API_KEY || '', googleTilesKey: env.GOOGLE_MAPS_API_KEY || '',
+        maptilerKey: env.MAPTILER_API_KEY || '', googleTilesKey: env.GOOGLE_MAPS_API_KEY || '', traffic: Boolean(env.TOMTOM_API_KEY),
         ip: cf.latitude && cf.longitude ? { lat: Number(cf.latitude), lon: Number(cf.longitude), city: cf.city || '' } : null
       });
+    }
+    if (url.pathname.startsWith('/api/traffic/')) {
+      try { return await traffic(request, url, env, ctx); }
+      catch (e) { return json({ error: String(e.message || e) }, 502); }
     }
     const handler = routes[url.pathname];
     if (handler) {

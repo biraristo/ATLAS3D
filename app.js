@@ -112,8 +112,9 @@ const HIDPI = (devicePixelRatio || 1) >= 1.5, RASTER_TS = HIDPI ? 128 : 256;
 const HS_EXAG = k => ['interpolate', ['linear'], ['zoom'], 10, k, 14, k * 0.6, 16, k * 0.15, 17, 0];
 const OWN = new Set(); // bizim eklediğimiz katmanlar
 let styleLayerIds = [], baseVisibility = {};
-let basemap = store.get('basemap', 'terrain'); if (basemap !== 'satellite') basemap = 'terrain'; // harita = arazi görünümü
-const opts = store.get('opts', { terrain: true, buildings: true, labels: true });
+// Her açılış uydu görünümü ve 3D arazi ile başlar; oturum içindeki değişiklikler bir sonraki açılışı etkilemez
+let basemap = 'satellite';
+const opts = { ...store.get('opts', { buildings: true, labels: true }), terrain: true };
 let cfg = {};
 const cfgReady = fetch('/api/config', { cache: 'no-store' }).then(r => r.ok ? r.json() : {}).catch(() => ({})).then(d => (cfg = d || {}));
 
@@ -147,16 +148,19 @@ async function buildStyle() {
   return style;
 }
 
+const LINKED = /^#[\d.]+\/-?[\d.]+\/-?[\d.]+/.test(location.hash) || /[?&](p|to|action)=/.test(location.search); // paylaşılan bağlantı / kısayol
+const PITCH_3D = 60;
 function initialView() {
   if (/^#[\d.]+\/-?[\d.]+\/-?[\d.]+/.test(location.hash)) return null; // URL'deki görünüm kullanılır
-  return store.get('view', null);
+  const v = store.get('view', null);
+  return v && { ...v, pitch: Math.max(v.pitch || 0, PITCH_3D) }; // açılışta her zaman 3D (eğik) görünüm
 }
 
 let map, userMoved = false;
 const savedView = initialView();
 buildStyle().then(style => {
   map = new maplibregl.Map({
-    container: 'map', style, hash: true, ...(savedView || TR_VIEW),
+    container: 'map', style, hash: true, ...(savedView || (location.hash ? TR_VIEW : { ...TR_VIEW, pitch: PITCH_3D })),
     maxPitch: 80, pixelRatio: Math.min(devicePixelRatio || 1, 3), fadeDuration: 120,
     attributionControl: { compact: true }, cancelPendingTileRequestsWhileZooming: true
   });
@@ -166,11 +170,27 @@ buildStyle().then(style => {
   // OpenFreeMap sprite'ında olmayan birkaç POI simgesi (atm, office, gate…): boş görsel ver, uyarı ve yeniden deneme olmasın
   map.on('styleimagemissing', e => { if (!map.hasImage(e.id)) map.addImage(e.id, { width: 1, height: 1, data: new Uint8Array(4) }); });
   wireMap();
-  // İlk açılışta ziyaretçinin yaklaşık konumuna aç (URL'de veya kayıtlı görünüm yoksa)
-  if (!savedView && !location.hash && !/[?&](p|to|action)=/.test(location.search)) {
-    cfgReady.then(c => { if (c.ip && !userMoved) map.jumpTo({ center: [c.ip.lon, c.ip.lat], zoom: 11.5, pitch: 45 }); });
+  // Konum bulunana kadar ilk açılışta ziyaretçinin yaklaşık konumunu göster (URL'de veya kayıtlı görünüm yoksa)
+  if (!savedView && !LINKED) {
+    cfgReady.then(c => { if (c.ip && !userMoved && !autoLocated) map.jumpTo({ center: [c.ip.lon, c.ip.lat], zoom: 11.5, pitch: PITCH_3D }); });
   }
+  autoLocate();
 });
+
+/* Açılışta konum: izin daha önce verildiyse sessizce, verilmediyse tarayıcı izin sorar. Konum gelince oraya 3D uçulur.
+   İzin reddedilmişse tekrar sorulmaz ve uyarı gösterilmez; harita kayıtlı / yaklaşık konumda kalır. */
+let autoLocated = false;
+async function autoLocate() {
+  if (!navigator.geolocation || !isSecureContext) return;
+  try { if ((await navigator.permissions?.query({ name: 'geolocation' }))?.state === 'denied') return; } catch { /* Permissions API yoksa doğrudan dene */ }
+  try {
+    const ll = await ensureMe();
+    if (LINKED || userMoved || navActive || !map || !$('panel').hidden) return; // paylaşılan bağlantıyı veya kullanıcının gezinmesini bozma
+    autoLocated = true;
+    $('locate').classList.add('on');
+    map.flyTo({ center: ll, zoom: Math.max(map.getZoom(), 16.5), pitch: Math.max(map.getPitch(), PITCH_3D), padding: mapPadding(), duration: 1600, essential: true });
+  } catch { /* izin yok veya konum alınamadı: sessizce geç */ }
+}
 
 function onMapLoad() {
   // Üst üste binen kamera animasyonları arazi yüksekliğini dondurabiliyor (MapLibre); hareket bitince çöz
@@ -218,7 +238,7 @@ function applyBasemap() {
   document.querySelectorAll('.bm').forEach(b => { b.classList.toggle('on', b.dataset.id === basemap); b.setAttribute('aria-checked', b.dataset.id === basemap); });
 }
 function setBasemap(id) {
-  basemap = id; store.set('basemap', id); applyBasemap();
+  basemap = id; applyBasemap();
 }
 const BM_ICON = { terrain: 'landscape', satellite: 'satellite_alt' };
 function renderLayerPop() {
@@ -875,7 +895,7 @@ let suppressClick = false;
 const isLabel = f => f.layer.type === 'symbol' && f.properties?.name && !OWN.has(f.layer.id);
 function wireMap() {
   map.on('dragstart', () => { userMoved = true; hideCtx(); });
-  map.on('zoomstart', () => { userMoved = true; });
+  map.on('zoomstart', e => { if (e.originalEvent) userMoved = true; }); // kodla yapılan yakınlaştırmalar sayılmaz
   map.on('rotate', updateCompass); map.on('pitch', updateTilt);
   map.on('moveend', hudCenter); map.once('load', hudCenter);
   map.on('mousemove', e => { if (!isMobile()) hudCursor(e); });

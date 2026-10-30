@@ -160,7 +160,7 @@ buildStyle().then(style => {
   map.on('error', e => console.warn('Harita:', e.error?.message || e));
   wireMap();
   // İlk açılışta ziyaretçinin yaklaşık konumuna aç (URL'de veya kayıtlı görünüm yoksa)
-  if (!savedView && !location.hash && !location.search) {
+  if (!savedView && !location.hash && !/[?&](p|to|action)=/.test(location.search)) {
     cfgReady.then(c => { if (c.ip && !userMoved) map.jumpTo({ center: [c.ip.lon, c.ip.lat], zoom: 11.5, pitch: 45 }); });
   }
 });
@@ -1339,6 +1339,7 @@ $('drawer').onclick = e => {
   if (a === 'recent') showList('Son aramalar', recent(), { fit: true });
   if (a === 'measure') startMeasure();
   if (a === 'mylocation') locateMe();
+  if (a === 'install') installApp();
   if (a === 'share') share('ATLAS3D Haritalar', location.href);
   if (a === 'about') openPanel(el => { el.innerHTML = `<div class="list-head drag-zone"><h2>Veri kaynakları</h2><small>Tüm servisler anahtarsız ve ücretsizdir</small></div>
     <div class="info">
@@ -1356,6 +1357,9 @@ function parseLL(s) { const m = (s || '').split(',').map(Number); return m.lengt
 function handleUrlParams() {
   const u = new URLSearchParams(location.search);
   const p = parseLL(u.get('p')), to = parseLL(u.get('to')), from = parseLL(u.get('from'));
+  // Ana ekran kısayolları
+  if (u.get('action') === 'directions') openDirections({});
+  if (u.get('action') === 'locate') locateMe();
   if (to) {
     if (MODES[u.get('mode')]) dir.mode = u.get('mode');
     openDirections({ to: { ...to, name: u.get('tn') || 'Hedef' }, from: from ? { ...from, name: u.get('fn') || 'Başlangıç' } : ME });
@@ -1390,4 +1394,37 @@ async function openGoogle3D() {
     const c = map.getCenter();
     gViewer.camera.flyTo({ destination: Cesium.Cartesian3.fromDegrees(c.lng, c.lat, 1200), orientation: { heading: Cesium.Math.toRadians(map.getBearing()), pitch: Cesium.Math.toRadians(-40), roll: 0 }, duration: 1.2 });
   } catch (e) { box.hidden = true; toast('Google 3D açılamadı: ' + (e.message || e), 6000); }
+}
+
+/* ================= Telefona uygulama olarak kurulum (PWA) ================= */
+let installEvt = null;
+const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+if ('serviceWorker' in navigator && isSecureContext) {
+  addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(e => console.warn('Service worker:', e)));
+}
+addEventListener('beforeinstallprompt', e => {
+  e.preventDefault(); installEvt = e; $('install-item').hidden = false;
+  if (isMobile() && !store.get('installHint', false)) { store.set('installHint', true); setTimeout(() => toast('İpucu: menüden ATLAS3D\'yi uygulama olarak yükleyebilirsin', 5000), 4000); }
+});
+addEventListener('appinstalled', () => { installEvt = null; $('install-item').hidden = true; toast('ATLAS3D ana ekrana eklendi'); });
+if (!isStandalone() && (isIOS || isMobile())) $('install-item').hidden = false;
+async function installApp() {
+  if (installEvt) {
+    installEvt.prompt();
+    const { outcome } = await installEvt.userChoice;
+    installEvt = null; $('install-item').hidden = outcome === 'accepted';
+    return;
+  }
+  openPanel(el => {
+    el.innerHTML = `<div class="list-head drag-zone"><h2>Ana ekrana ekle</h2><small>ATLAS3D tarayıcı çubuğu olmadan, uygulama gibi tam ekran açılır</small></div>
+      <div class="info">${isIOS ? `
+        <div class="info-row"><span class="ms">ios_share</span><span><b>1.</b> Safari'de alttaki <b>Paylaş</b> düğmesine dokun.</span></div>
+        <div class="info-row"><span class="ms">add_box</span><span><b>2.</b> Listeden <b>Ana Ekrana Ekle</b>'yi seç.</span></div>
+        <div class="info-row"><span class="ms">install_mobile</span><span><b>3.</b> Sağ üstte <b>Ekle</b>'ye dokun. Simge ana ekranında belirir.</span></div>` : `
+        <div class="info-row"><span class="ms">menu</span><span><b>1.</b> Tarayıcının menüsünü (⋮) aç.</span></div>
+        <div class="info-row"><span class="ms">install_mobile</span><span><b>2.</b> <b>Uygulamayı yükle</b> ya da <b>Ana ekrana ekle</b>'yi seç.</span></div>`}
+      </div>
+      <div class="mini-note">${isIOS ? 'iPhone ve iPad\'de Safari ile ekle. ' : ''}Kurulumdan sonra uygulamayı ana ekrandaki ATLAS3D simgesinden aç.</div>`;
+  }, { mode: 'list' });
 }

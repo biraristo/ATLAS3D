@@ -1,0 +1,25 @@
+{
+  "id": "/",
+  "name": "ATLAS3D Haritalar",
+  "short_name": "ATLAS3D",
+  "description": "3D harita, yol tarifi ve rota boyunca rakım–eğim analizi",
+  "lang": "tr",
+  "dir": "ltr",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "categories": ["navigation", "travel", "maps"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Yol tarifi", "short_name": "Yol tarifi", "url": "/?action=directions", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Konumum", "short_name": "Konumum", "url": "/?action=locate", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

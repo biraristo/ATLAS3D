@@ -8,6 +8,7 @@ Telefonda uygulama gibi kurulabilen (PWA) **3D** harita. Rakım ve eğim analizi
 - **Yer kartı:** adres, telefon, web sitesi, çalışma saatleri (OSM), rakım ve arazi eğimi, kaydetme, paylaşma
 - **Yakındakiler:** restoran, otel, kafe, benzin, market, eczane, hastane, ATM, otopark, cami
 - **Yol tarifi:** araç, yürüyüş ve bisiklet; alternatif rotalar; Türkçe adım adım tarif; köprü, otoyol ve feribot ücretleri
+- **Yolculuk maliyeti:** araç tipi (hatchback, sedan, SUV, hafif ticari, motosiklet), yakıt (benzin, dizel, LPG, elektrik), ortalama tüketim ve yolcu sayısına göre yakıt + geçiş ücreti toplamı, kişi başı maliyet; tüketim eğim, hız, hızlanma ve rölantiyi hesaba katan fizik modeliyle tahmin edilir ve yakıtın nereye gittiği gösterilir
 - **Canlı trafik (TomTom anahtarı varsa):** trafik katmanı, trafiğe göre süre ve rota, ücretli yol içermeyen seçenek, ulaşılabilir alan
 - **Rakım ve eğim:** eğime göre renklendirilmiş rota, etkileşimli yükseklik profili, toplam tırmanış/iniş, dik bölümler, eğime göre düzeltilmiş yürüyüş/bisiklet süresi, ayrıntılı rota analizi ve GPX
 - **Navigasyon:** sesli yönlendirme, rotadan çıkınca yeniden hesaplama, anlık rakım/eğim, dik yokuş uyarısı
@@ -15,7 +16,7 @@ Telefonda uygulama gibi kurulabilen (PWA) **3D** harita. Rakım ve eğim analizi
 - **Araçlar:** mesafe ölçme ve arazi kesiti, rotanın 3D kuş bakışı önizlemesi, sağ tık/uzun basma menüsü
 
 ## Kaynaklar
-Anahtarsız: MapLibre GL JS · OpenFreeMap (OpenMapTiles/OSM) · Esri World Imagery · AWS Terrain Tiles · maplibre-contour · Photon · Nominatim · OSRM (routing.openstreetmap.de)
+Anahtarsız: EPDK günlük akaryakıt ve LPG bayi satış fiyatı bülteni (açık REST servisi) · MapLibre GL JS · OpenFreeMap (OpenMapTiles/OSM) · Esri World Imagery · AWS Terrain Tiles · maplibre-contour · Photon · Nominatim · OSRM (routing.openstreetmap.de)
 
 İsteğe bağlı (Cloudflare → atlas3d → Settings → Variables and Secrets, gizli değişken olarak):
 - `TOMTOM_API_KEY` — canlı trafik, trafiğe göre rotalar, ulaşılabilir alan

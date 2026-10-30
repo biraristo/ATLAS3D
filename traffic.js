@@ -82,19 +82,6 @@ async function loadTraffic(routes) {
 }
 
 /* ----- Rota kartı ve panel ----- */
-function trafficOptHtml(r, i) {
-  if (!TRAFFIC.on || dir.mode !== 'car') return '';
-  if (r.trafficPending) return '<div class="via tr-line"><span class="tr-chip wait"><span class="ms">traffic</span>Trafik kontrol ediliyor…</span></div>';
-  const t = r.traffic; if (!t) return '';
-  const min = Math.round(t.delay / 60);
-  const chip = min >= 1
-    ? `<span class="tr-chip ${min >= 15 ? 'bad' : 'mid'}"><span class="ms">traffic</span>Trafik +${fmtDur(t.delay)}</span>`
-    : '<span class="tr-chip ok"><span class="ms">traffic</span>Trafik akıcı</span>';
-  const all = dir.routes.filter(x => x.traffic);
-  const best = all.length > 1 && all.length === dir.routes.length && t.travel === Math.min(...all.map(x => x.traffic.travel));
-  const tag = r.avoidToll ? '<span class="tr-tag"><span class="ms">alt_route</span>Ücretli yollardan kaçınır</span>' : r.provider === 'tomtom' ? '<span class="tr-tag"><span class="ms">alt_route</span>Trafiğe göre önerilen</span>' : '';
-  return `<div class="via tr-line">${chip}${best ? '<span class="tr-best">Trafikte en hızlı</span>' : ''}${tag}</div>`;
-}
 function trafficSectionHtml(r) {
   if (!TRAFFIC.on || dir.mode !== 'car' || !r.traffic) return '';
   const t = r.traffic, secs = t.sections.filter(s => s.at >= t.from);

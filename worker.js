@@ -5,9 +5,12 @@
 //   /api/lookup        Nominatim (OSM nesne detayı: telefon, web, saatler)
 //   /api/route         OSRM (araç / yürüyüş / bisiklet rota)
 //   /api/nearby        Nominatim (harita alanında kategori araması)
+//   /api/fuel          EPDK günlük akaryakıt ve LPG bayi satış fiyatı bülteni (Türkiye ortalaması)
 //   /api/traffic/*     TomTom (TOMTOM_API_KEY varsa): trafik karoları, trafikli rota, ulaşılabilir alan
 //   /api/config        özellik bayrakları + ziyaretçinin yaklaşık konumu (Cloudflare)
 //   /api/health        durum
+import { connect } from 'cloudflare:sockets';
+
 const UA = 'ATLAS3D/2.0 (+https://github.com/biraristo/ATLAS3D)';
 const NOMINATIM = 'https://nominatim.openstreetmap.org';
 
@@ -218,6 +221,67 @@ function ttToOsrm(rt, avoid) {
   };
 }
 
+/* ================= Yakıt fiyatları (EPDK) =================
+   Kaynak: EPDK "Petrol / LPG Piyasası Bayi Satış Fiyatı Bülteni" açık REST servisleri (apigateway.epdk.gov.tr).
+   Servis tarihi GET isteğinin gövdesinde istiyor; fetch() gövdeli GET göndermediği için ham HTTPS soketi kullanılır.
+   Bülten o gün yayımlanmadıysa önceki günlere bakılır. Sonuç 3 saat önbellekte tutulur. */
+const EPDK_HOST = 'apigateway.epdk.gov.tr';
+function concatBytes(chunks) { const n = chunks.reduce((s, c) => s + c.length, 0), out = new Uint8Array(n); let o = 0; for (const c of chunks) { out.set(c, o); o += c.length; } return out; }
+function dechunk(bytes) {
+  const out = []; let i = 0;
+  while (i < bytes.length) {
+    let j = i; while (j < bytes.length - 1 && !(bytes[j] === 13 && bytes[j + 1] === 10)) j++;
+    const size = parseInt(new TextDecoder().decode(bytes.slice(i, j)).split(';')[0].trim(), 16);
+    if (!size) break;
+    out.push(bytes.slice(j + 2, j + 2 + size)); i = j + 2 + size + 2;
+  }
+  return concatBytes(out);
+}
+async function getWithBody(host, path, body, timeoutMs = 8000) {
+  const sock = connect({ hostname: host, port: 443 }, { secureTransport: 'on' });
+  const timer = setTimeout(() => { try { sock.close(); } catch {} }, timeoutMs);
+  try {
+    const data = new TextEncoder().encode(body);
+    const w = sock.writable.getWriter();
+    await w.write(new TextEncoder().encode(`GET ${path} HTTP/1.1\r\nHost: ${host}\r\nUser-Agent: ${UA}\r\nAccept: application/json\r\nContent-Type: application/json\r\nContent-Length: ${data.length}\r\nConnection: close\r\n\r\n`));
+    await w.write(data); w.releaseLock();
+    const rd = sock.readable.getReader(), chunks = [];
+    for (;;) { const { value, done } = await rd.read(); if (done) break; chunks.push(value); }
+    const all = concatBytes(chunks);
+    let h = 0; while (h < all.length - 3 && !(all[h] === 13 && all[h + 1] === 10 && all[h + 2] === 13 && all[h + 3] === 10)) h++;
+    const head = new TextDecoder().decode(all.slice(0, h)), status = +(head.match(/^HTTP\/1\.[01] (\d{3})/) || [])[1];
+    let payload = all.slice(h + 4);
+    if (/\r\ntransfer-encoding:\s*chunked/i.test(head)) payload = dechunk(payload);
+    return { status, text: new TextDecoder().decode(payload) };
+  } finally { clearTimeout(timer); try { await sock.close(); } catch {} }
+}
+const trDate = d => new Intl.DateTimeFormat('tr-TR', { timeZone: 'Europe/Istanbul', day: '2-digit', month: '2-digit', year: 'numeric' }).format(d); // gg.aa.yyyy
+async function epdkBulletin(service, want) {
+  for (let back = 0; back < 6; back++) {
+    const day = trDate(new Date(Date.now() - back * 86400000));
+    const r = await getWithBody(EPDK_HOST, `/${service}/`, JSON.stringify({ raporTarihi: day }));
+    if (r.status !== 200) continue;
+    const rows = (JSON.parse(r.text).data || []);
+    const out = {}; let date = null;
+    for (const [key, name] of Object.entries(want)) { const row = rows.find(x => x['Yakıt'] === name); if (row && row.Fiyat > 0) { out[key] = Math.round(row.Fiyat * 100) / 100; date = row.Tarih; } }
+    if (Object.keys(out).length) return { ...out, date };
+  }
+  return null;
+}
+async function fuelPrices(ctx) {
+  const key = new Request('https://atlas3d.cache/fuel/v1');
+  const hit = await caches.default.match(key); if (hit) return hit;
+  const [pet, lpg] = await Promise.all([
+    epdkBulletin('petrolBayiSatisFiyatBulten', { benzin: 'Kurşunsuz Benzin 95 Oktan', dizel: 'Motorin' }).catch(() => null),
+    epdkBulletin('lpgBayiSatisFiyatBultenGunluk', { lpg: 'Otogaz' }).catch(() => null)
+  ]);
+  if (!pet && !lpg) return json({ error: 'epdk-unavailable' }, 502);
+  const body = { source: 'EPDK günlük bayi satış fiyatı bülteni (Türkiye ortalaması)', date: pet?.date || lpg?.date, benzin: pet?.benzin ?? null, dizel: pet?.dizel ?? null, lpg: lpg?.lpg ?? null, at: Date.now() };
+  const res = new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=3600' } });
+  if (pet && lpg) ctx.waitUntil(caches.default.put(key, new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=10800' } })));
+  return res;
+}
+
 /* ================= Canlı trafik (TomTom) =================
    Anahtar (TOMTOM_API_KEY) yalnızca Cloudflare'de gizli değişken olarak tutulur, tarayıcıya gitmez.
    /api/traffic/flow/{z}/{x}/{y}.png        trafik akış karosu (2 dk önbellek)
@@ -336,6 +400,9 @@ export default {
     }
     if (url.pathname === '/api/autocomplete' && env.MAPBOX_TOKEN) {
       try { return await mergedAutocomplete(url.searchParams, env, ctx, url.origin); } catch (e) { /* aşağıdaki Photon'a düş */ }
+    }
+    if (url.pathname === '/api/fuel') {
+      try { return await fuelPrices(ctx); } catch (e) { return json({ error: String(e.message || e) }, 502); }
     }
     if (url.pathname.startsWith('/api/traffic/')) {
       try { return await traffic(request, url, env, ctx); }

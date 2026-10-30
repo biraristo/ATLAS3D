@@ -1064,6 +1064,7 @@ function renderDir(el) {
         <button class="icon-btn" id="dir-swap" aria-label="Yer değiştir"><span class="ms">swap_vert</span></button>
       </div>
     </div>
+    <div id="veh-box" class="veh-box">${typeof vehChipHtml === 'function' ? vehChipHtml() : ''}</div>
     <div id="dir-results">${dirResultsHtml()}</div>`;
   $('dir-close').onclick = () => closePanel();
   el.querySelectorAll('.mode').forEach(b => { b.onclick = () => { dir.mode = b.dataset.m; store.set('mode', dir.mode); renderDir(el); if (dir.from && dir.to) computeRoute(); }; });
@@ -1087,26 +1088,41 @@ function renderDir(el) {
       try { const d = await api('/api/autocomplete', { q, lat: map.getCenter().lat, lon: map.getCenter().lng }); const it = suggestionItems(d.features || []); if (it[0]) pick(it[0]); else toast('Yer bulunamadı'); } catch { toast('Arama yapılamadı'); }
     });
   }
+  wireVehBox();
   wireDirResults();
+}
+function wireVehBox() {
+  const box = $('veh-box'); if (!box || typeof wireVehicle !== 'function') return;
+  wireVehicle(box, () => { box.innerHTML = vehChipHtml(); wireVehBox(); refreshDirResults(); });
 }
 function dirResultsHtml() {
   if (dir.loading) return '<div class="loading"><div class="spinner"></div>Rota hesaplanıyor…</div>';
   if (dir.error) return `<div class="empty">${esc(dir.error)}</div>`;
   if (!dir.routes.length) return `<div class="empty">Başlangıç ve hedef seçin.<br><small>Haritada sağ tıklayarak (mobilde basılı tutarak) da nokta seçebilirsiniz.</small></div>`;
   const now = Date.now(), T = r => (typeof trTime === 'function' ? trTime(r) : r.duration), fastest = Math.min(...dir.routes.map(T)), hasTr = dir.routes.some(r => r.traffic);
-  const opt = dir.routes.map((r, i) => `
-    <div class="route-opt ${i === dir.sel ? 'on' : ''}" data-i="${i}">
-      <span class="ms">${MODES[dir.mode].icon}</span>
-      <div style="flex:1">
-        <div><span class="t ${T(r) > fastest * 1.15 ? 'slow' : ''}">${fmtDur(T(r))}</span><span class="d">${fmtDist(r.distance)}</span></div>
-        <div class="via">${r.summaryText ? esc(r.summaryText) + ' üzerinden' : ''}${!hasTr && i === 0 && dir.routes.length > 1 ? ' · En hızlı rota' : ''}</div>
-        <div class="via">Tahmini varış: ${fmtClock(new Date(now + T(r) * 1000))}${r.traffic && r.traffic.delay >= 60 ? ` · trafiksiz ${fmtDur(r.traffic.free || r.duration)}` : ''}</div>
-        ${typeof trafficOptHtml === 'function' ? trafficOptHtml(r, i) : ''}
-        ${r.tolls ? `<div class="via toll-line">${r.tolls.items.some(x => x.kind === 'feribot') ? '<span class="toll-chip"><span class="ms">directions_boat</span>Feribot</span>' : ''}${r.tolls.total > 0 ? `<span class="toll-chip"><span class="ms">toll</span>${fmtTL(r.tolls.total)} geçiş ücreti</span>` : '<span class="toll-chip free"><span class="ms">money_off</span>Ücretsiz</span>'}${dir.routes.length > 1 && dir.routes.some(x => x.tolls && x.tolls.total !== r.tolls.total) && r.tolls.total === Math.min(...dir.routes.map(x => x.tolls?.total ?? Infinity)) ? '<span class="toll-best">En ucuz</span>' : ''}</div>` : ''}
-        ${r.profile ? `<div class="via climb"><span style="color:#dc2626">↑ ${nf0.format(Math.round(r.profile.ascent))} m</span> <span style="color:#2563eb">↓ ${nf0.format(Math.round(r.profile.descent))} m</span>${r.profile.steep.length ? ` · ${r.profile.steep.length} dik bölüm` : ''}${r.profile.tAdj ? ` · eğime göre ~${fmtDur(r.profile.tAdj)}` : ''}</div>` : ''}
-        ${i === dir.sel ? `<div class="btns"><button class="btn primary" id="nav-start"><span class="ms">navigation</span>Başlat</button><button class="btn outline" id="steps-toggle"><span class="ms">list</span>${dir.showSteps ? 'Adımları gizle' : 'Adımlar'}</button><button class="btn outline" id="fly-btn" title="Rotayı 3D önizle"><span class="ms">3d_rotation</span>3D önizle</button><button class="btn outline" id="dir-share" aria-label="Paylaş"><span class="ms">share</span></button></div>` : ''}
-      </div>
-    </div>`).join('');
+  const car = dir.mode === 'car', costs = dir.routes.map(r => (car && typeof routeCost === 'function' ? routeCost(r) : null));
+  const many = dir.routes.length > 1, minCost = Math.min(...costs.map(c => c?.total ?? Infinity));
+  const opt = dir.routes.map((r, i) => {
+    const c = costs[i], sel = i === dir.sel, t = T(r), delay = r.traffic?.delay || 0;
+    const tags = [];
+    if (many && t === fastest) tags.push('<span class="ro-tag fast">En hızlı</span>');
+    if (many && c && c.total === minCost && costs.some(x => x && x.total - minCost > 20)) tags.push('<span class="ro-tag cheap">En ucuz</span>');
+    if (car && r.tolls && !r.tolls.items.some(x => x.kind !== 'feribot')) tags.push(`<span class="ro-tag free">${r.tolls.items.length ? 'Ücretli yol yok' : 'Ücretsiz yol'}</span>`);
+    if (r.tolls?.items.some(x => x.kind === 'feribot')) tags.push('<span class="ro-tag">Feribot</span>');
+    if (delay >= 60) tags.push(`<span class="ro-tag ${delay >= 900 ? 'jam' : 'slow'}">Trafik +${fmtDur(delay)}</span>`);
+    if (r.trafficPending) tags.push('<span class="ro-tag wait">Trafik kontrol ediliyor</span>');
+    const climb = r.profile ? `↑ ${nf0.format(Math.round(r.profile.ascent))} m  ↓ ${nf0.format(Math.round(r.profile.descent))} m` : '';
+    const meta = c ? [`Yakıt ${fmtTL(c.fuelCost)}`, c.toll ? `Geçiş ${fmtTL(c.toll)}` : 'Geçiş yok', c.perPerson ? `Kişi başı ${fmtTL(c.perPerson)}` : ''].filter(Boolean).join(' · ') : '';
+    return `
+    <div class="route-opt ${sel ? 'on' : ''}" data-i="${i}" role="button" tabindex="0" aria-pressed="${sel}">
+      <div class="ro-top"><span class="ro-time ${t > fastest * 1.15 ? 'slow' : ''}">${fmtDur(t)}</span>${c ? `<span class="ro-cost">${fmtTL(c.total)}</span>` : climb ? `<span class="ro-climb">${climb}</span>` : ''}</div>
+      <div class="ro-sub"><span>${fmtDist(r.distance)} · varış ${fmtClock(new Date(now + t * 1000))}</span>${c ? '<span>toplam tahmini</span>' : ''}</div>
+      ${r.summaryText ? `<div class="ro-via">${esc(r.summaryText)} üzerinden</div>` : ''}
+      ${tags.length ? `<div class="ro-tags">${tags.join('')}</div>` : ''}
+      ${sel ? `${meta || (c && climb) ? `<div class="ro-meta">${meta}${c && climb ? `<span class="ro-climb">${climb}</span>` : ''}</div>` : ''}
+      <div class="ro-acts"><button class="btn primary" id="nav-start"><span class="ms">navigation</span>Başlat</button><button class="btn outline" id="steps-toggle"><span class="ms">list</span>${dir.showSteps ? 'Gizle' : 'Adımlar'}</button><button class="icon-btn ro-ib" id="fly-btn" aria-label="Rotayı 3D önizle" title="3D önizle"><span class="ms">3d_rotation</span></button><button class="icon-btn ro-ib" id="dir-share" aria-label="Paylaş" title="Paylaş"><span class="ms">share</span></button></div>` : ''}
+    </div>`;
+  }).join('');
   const r = dir.routes[dir.sel], pr = r.profile;
   const prof = pr ? `<div class="profile"><div class="prof-head"><div class="section-title" style="padding:0">Yükseklik profili</div><button class="text-btn" id="ana-open"><span class="ms" style="font-size:18px;vertical-align:-4px">insights</span> Ayrıntılı analiz</button></div>${profileStatsHtml(pr)}${profileSvg(pr)}<div class="ptip" id="prof-tip">Grafikte gezdirin: haritada konumu gösterir</div>
     <div class="legend"><span><i style="background:#2563eb"></i>iniş</span><span><i style="background:#22c55e"></i>düz</span><span><i style="background:#facc15"></i>hafif tırmanış</span><span><i style="background:#f97316"></i>dik</span><span><i style="background:#dc2626"></i>çok dik</span></div></div>`
@@ -1114,10 +1130,11 @@ function dirResultsHtml() {
   const steepHtml = pr && pr.steep.length ? `<div class="section-title" style="padding:10px 24px 2px">Dik bölümler</div><div class="steep-list">${pr.steep.map((s, i) => `<div class="steep" data-k="${i}"><span class="ms" style="color:${slopeColor(s.grade)}">${s.grade > 0 ? 'trending_up' : 'trending_down'}</span><div><b>${fmtDist(s.len)} boyunca ortalama ${fmtSlope(s.grade)} ${s.grade > 0 ? 'tırmanış' : 'iniş'}</b><small>${fmtDist(s.from)} sonra başlar · ${s.dh > 0 ? '+' : ''}${nf0.format(Math.round(s.dh))} m · en dik ${fmtSlope(s.max)}</small></div></div>`).join('')}</div>` : '';
   const dE = v => v == null ? '' : Math.abs(v) < 3 ? '' : ` · <span style="color:${v > 0 ? '#dc2626' : '#2563eb'}">${v > 0 ? '↑' : '↓'} ${nf0.format(Math.round(Math.abs(v)))} m</span>`;
   const steps = dir.showSteps ? `<div class="step-sum">${esc(dir.from.name)} → ${esc(dir.to.name)}</div><ol class="steps">${r.steps.map((s, i) => `<li class="step" data-s="${i}"><span class="ms">${s.icon}</span><div>${esc(s.text)}<div class="sd">${s.distance > 0 ? fmtDist(s.distance) : ''}${dE(s.dElev)}</div></div></li>`).join('')}</ol>` : '';
-  const tollHtml = r.tolls && dir.mode === 'car' ? tollSectionHtml(r) : '';
+  const costHtml = car && typeof costSectionHtml === 'function' ? costSectionHtml(r) : '';
+  const tollHtml = r.tolls && car && r.tolls.items.length ? tollSectionHtml(r) : '';
   const altNote = dir.altPending ? '<div class="alt-pending"><span class="spinner sm"></span>Alternatif rotalar aranıyor…</div>' : '';
   const trHtml = typeof trafficSectionHtml === 'function' ? trafficSectionHtml(r) : '';
-  return opt + altNote + trHtml + tollHtml + prof + steepHtml + steps + `<div class="mini-note">${hasTr ? 'Süreler canlı trafiği içerir (TomTom).' : 'Süreler trafik içermez.'} Yükseklik verisi ~30 m çözünürlüklü arazi modelinden hesaplanır.</div>`;
+  return opt + altNote + costHtml + trHtml + tollHtml + prof + steepHtml + steps + `<div class="mini-note">${hasTr ? 'Süreler canlı trafiği içerir (TomTom).' : 'Süreler trafik içermez.'} Yükseklik verisi ~30 m çözünürlüklü arazi modelinden hesaplanır.</div>`;
 }
 function tollSectionHtml(r) {
   const t = r.tolls;
@@ -1132,7 +1149,10 @@ function tollSectionHtml(r) {
 }
 function wireDirResults() {
   const box = $('dir-results'); if (!box) return;
-  box.querySelectorAll('.route-opt').forEach(o => { o.onclick = e => { if (!e.target.closest('button')) selectRoute(+o.dataset.i); }; });
+  box.querySelectorAll('.route-opt').forEach(o => {
+    o.onclick = e => { if (!e.target.closest('button')) selectRoute(+o.dataset.i); };
+    o.onkeydown = e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === o) { e.preventDefault(); selectRoute(+o.dataset.i); } };
+  });
   $('nav-start')?.addEventListener('click', startNav);
   $('steps-toggle')?.addEventListener('click', () => { dir.showSteps = !dir.showSteps; refreshDirResults(); if (isMobile() && dir.showSteps) setSheet('full'); });
   $('dir-share')?.addEventListener('click', () => {

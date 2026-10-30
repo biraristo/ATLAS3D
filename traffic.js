@@ -6,7 +6,13 @@
    - Navigasyonda trafik her 4 dakikada yenilenir, 2 km içindeki sıkışıklık için uyarı verilir. */
 const TRAFFIC = { on: false, enabled: store.get('traffic', false), timer: null, navAt: 0, navBusy: false };
 const TR_MAG = { 0: ['Yavaş trafik', '#f29900'], 1: ['Yavaş trafik', '#f29900'], 2: ['Sıkışık trafik', '#ea4335'], 3: ['Çok sıkışık', '#a50e0e'], 4: ['Yol kapalı', '#3c4043'] };
+// TPEG/TEC olay sebebi kodları
+const TR_CAUSE = { 2: ['Kaza', 'car_crash'], 3: ['Yol çalışması', 'construction'], 4: ['Şerit daralması', 'warning'], 5: ['Yol geçilemez', 'block'], 6: ['Kaygan yol', 'warning'],
+  8: ['Yangın', 'local_fire_department'], 9: ['Tehlikeli sürüş koşulları', 'warning'], 10: ['Yolda cisim', 'warning'], 11: ['Yolda hayvan', 'warning'], 12: ['Yolda yaya', 'warning'],
+  13: ['Arızalı araç', 'car_repair'], 14: ['Ters yönde araç', 'warning'], 15: ['Kaya düşmesi', 'warning'], 16: ['Trafik düzenlemesi', 'warning'] };
 function trSecInfo(s) {
+  const cz = TR_CAUSE[s.cause];
+  if (cz && s.cat !== 'ROAD_CLOSURE') { const c = (TR_MAG[s.mag] || TR_MAG[1])[1]; return [cz[0] + (s.mag >= 2 ? ' · sıkışık' : ''), c, cz[1]]; }
   if (s.cat === 'ROAD_CLOSURE') return ['Yol kapalı', '#3c4043', 'block'];
   if (s.cat === 'ROAD_WORK') return ['Yol çalışması', s.mag >= 2 ? '#ea4335' : '#f29900', 'construction'];
   const [t, c] = TR_MAG[s.mag] || TR_MAG[1];
@@ -46,6 +52,9 @@ async function trFetchRoute(r, from = 0) {
   if (!d.travel) return null;
   // TomTom'un kurduğu rota bizimkinden çok farklıysa (ör. yanlış yola sapmışsa) güvenme
   if (d.length && Math.abs(d.length - (r.total - from)) / (r.total - from) > 0.25) return null;
+  return trConvert(r, d, from);
+}
+function trConvert(r, d, from = 0) {
   let idx = 0; const secs = [];
   for (const s of d.sections || []) {
     if (!s.coords?.length) continue;
@@ -58,12 +67,16 @@ async function trFetchRoute(r, from = 0) {
 }
 async function loadTraffic(routes) {
   if (!TRAFFIC.on || dir.mode !== 'car' || !routes?.length) return;
-  routes.forEach(r => { r.trafficPending = true; });
-  await Promise.all(routes.map(async r => {
+  // TomTom'dan gelen rotalar trafiği zaten taşır; yalnızca rota üzerindeki konumlara çevir
+  for (const r of routes) if (r.traffic && !r.traffic.fetched) r.traffic = trConvert(r, r.traffic);
+  const todo = routes.filter(r => !r.trafficPending && !(r.traffic && Date.now() - r.traffic.fetched < 110000));
+  if (!todo.length) { if (dir.routes === routes && !navActive) refreshDirResults(); drawTraffic(); return; }
+  todo.forEach(r => { r.trafficPending = true; });
+  await Promise.all(todo.map(async r => {
     try { r.traffic = await trFetchRoute(r); } catch (e) { console.warn(e); r.traffic = null; }
     r.trafficPending = false;
   }));
-  if (dir.routes !== routes || (navActive && navRoute && !routes.includes(navRoute))) return;
+  if (!routes.some(r => dir.routes.includes(r)) || (navActive && navRoute && !routes.includes(navRoute))) return;
   if (!navActive) refreshDirResults();
   drawTraffic();
 }
@@ -79,7 +92,8 @@ function trafficOptHtml(r, i) {
     : '<span class="tr-chip ok"><span class="ms">traffic</span>Trafik akıcı</span>';
   const all = dir.routes.filter(x => x.traffic);
   const best = all.length > 1 && all.length === dir.routes.length && t.travel === Math.min(...all.map(x => x.traffic.travel));
-  return `<div class="via tr-line">${chip}${best ? '<span class="tr-best">Trafikte en hızlı</span>' : ''}</div>`;
+  const tag = r.avoidToll ? '<span class="tr-tag"><span class="ms">alt_route</span>Ücretli yollardan kaçınır</span>' : r.provider === 'tomtom' ? '<span class="tr-tag"><span class="ms">alt_route</span>Trafiğe göre önerilen</span>' : '';
+  return `<div class="via tr-line">${chip}${best ? '<span class="tr-best">Trafikte en hızlı</span>' : ''}${tag}</div>`;
 }
 function trafficSectionHtml(r) {
   if (!TRAFFIC.on || dir.mode !== 'car' || !r.traffic) return '';
@@ -178,3 +192,91 @@ cfgReady.then(c => {
     else setTimeout(waitMap, 300);
   })();
 });
+
+/* ----- TomTom rotaları: trafiğe göre farklı yol ve ücretli yol içermeyen seçenek ----- */
+async function fetchTomTomRoutes(coords, ctrl, mode) {
+  if (!(await cfgReady).traffic || mode !== 'car') return null;
+  const get = q => fetch('/api/traffic/routes?' + new URLSearchParams({ coords, ...q }), { signal: ctrl.signal }).then(r => (r.ok ? r.json() : null)).catch(() => null);
+  const [main, free] = await Promise.all([get({ alt: '2' }), get({ alt: '0', avoid: 'toll' })]);
+  return { main: main?.routes || [], free: free?.routes || [] };
+}
+// İki rotanın ne kadar ortak yol paylaştığı (0–1): b'nin a üzerinde kalan payı
+function trCells(r, step) {
+  const set = new Set(); let j = 0;
+  for (let d = 0; d <= r.total; d += step) {
+    while (j < r.cum.length - 2 && r.cum[j + 1] < d) j++;
+    const a = r.coords[j], b = r.coords[j + 1] || a, t = Math.max(0, Math.min(1, (d - r.cum[j]) / (r.cum[j + 1] - r.cum[j] || 1)));
+    set.add(Math.round((a[0] + (b[0] - a[0]) * t) / 0.002) + ':' + Math.round((a[1] + (b[1] - a[1]) * t) / 0.002));
+  }
+  return set;
+}
+function trOverlap(a, b) {
+  const A = a._cells || (a._cells = trCells(a, 80)), B = trCells(b, 400);
+  let hit = 0;
+  for (const k of B) { const [x, y] = k.split(':').map(Number); let ok = false; for (let dx = -1; dx <= 1 && !ok; dx++) for (let dy = -1; dy <= 1 && !ok; dy++) ok = A.has((x + dx) + ':' + (y + dy)); if (ok) hit++; }
+  return hit / Math.max(1, B.size);
+}
+function mergeTomTomRoutes(tt, ctrl, mode, a, b) {
+  if (!tt || ctrl !== routeCtrl || dir.mode !== mode || navActive || !dir.routes.length) return;
+  const add = [], all = () => [...dir.routes, ...add];
+  const differs = (r, lim) => all().every(x => trOverlap(x, r) < lim);
+  for (const raw of tt.main) {
+    if (all().length >= 5) break;
+    const r = prepRoute(raw);
+    if (r.total > 1.6 * Math.min(...dir.routes.map(x => x.total))) continue;
+    if (differs(r, 0.8)) add.push(r);
+  }
+  let freeAdded = false;
+  if (tt.free[0] && !all().some(x => x.tolls && x.tolls.total === 0)) {
+    const r = prepRoute(tt.free[0]);
+    if ((!r.tolls || r.tolls.total === 0) && differs(r, 0.97)) { add.push(r); freeAdded = true; }
+  }
+  if (!add.length) return;
+  dir.routes = [...dir.routes, ...add];
+  drawRoutes(); setRouteMarkers(a, b); loadProfiles();
+  const n = add.length - (freeAdded ? 1 : 0);
+  toast([n ? `Trafiğe göre ${n} rota daha bulundu` : '', freeAdded ? 'Ücretli yol içermeyen rota eklendi' : ''].filter(Boolean).join(' · '), 3500);
+}
+
+/* ----- Ulaşılabilir alan: buradan 15 / 30 / 60 dakikada araçla nereye gidilir (trafikle) ----- */
+const RANGE = { ll: null, min: 30, ctrl: null };
+function ctxExtra(m, ll) {
+  if (!TRAFFIC.on) return;
+  const b = document.createElement('button'); b.dataset.a = 'range';
+  b.innerHTML = '<span class="ms">timelapse</span>Buradan ulaşılabilir alan';
+  b.addEventListener('click', () => openRange(ll));
+  m.insertBefore(b, m.querySelector('[data-a="measure"]'));
+}
+function rangeLayers() {
+  if (map.getSource('a3-range')) return;
+  const before = map.getStyle().layers.find(l => l.type === 'symbol')?.id;
+  map.addSource('a3-range', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+  map.addLayer({ id: 'a3-range-fill', type: 'fill', source: 'a3-range', paint: { 'fill-color': '#1a73e8', 'fill-opacity': 0.14 } }, before);
+  map.addLayer({ id: 'a3-range-line', type: 'line', source: 'a3-range', paint: { 'line-color': '#1a73e8', 'line-width': 2.5 } }, before);
+  OWN.add('a3-range-fill'); OWN.add('a3-range-line');
+}
+let rangeMarker = null;
+async function openRange(ll, min = RANGE.min) {
+  RANGE.ll = ll; RANGE.min = min; rangeLayers();
+  $('range-bar').hidden = false;
+  $('range-mins').querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.m === min));
+  $('range-text').textContent = 'Hesaplanıyor…';
+  if (!rangeMarker) rangeMarker = new maplibregl.Marker({ element: makeEl('<div class="start-dot"></div>') });
+  rangeMarker.setLngLat([ll.lon, ll.lat]).addTo(map);
+  RANGE.ctrl?.abort(); const ctrl = RANGE.ctrl = new AbortController();
+  try {
+    const res = await fetch('/api/traffic/range?' + new URLSearchParams({ lat: ll.lat.toFixed(5), lon: ll.lon.toFixed(5), min }), { signal: ctrl.signal });
+    const d = res.ok ? await res.json() : null;
+    if (!d?.ring?.length) throw new Error();
+    map.getSource('a3-range').setData({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [d.ring] } });
+    const bb = new maplibregl.LngLatBounds(); d.ring.forEach(p => bb.extend(p));
+    map.fitBounds(bb, { padding: mapPadding(), pitch: 0, bearing: 0, duration: 1000 });
+    $('range-text').textContent = `${min < 60 ? min + ' dk' : '1 saat'} içinde araçla (şu anki trafikle)`;
+  } catch (e) { if (e.name !== 'AbortError') $('range-text').textContent = 'Alan hesaplanamadı'; }
+}
+function closeRange() {
+  RANGE.ctrl?.abort(); $('range-bar').hidden = true; rangeMarker?.remove();
+  map.getSource('a3-range')?.setData({ type: 'FeatureCollection', features: [] });
+}
+$('range-mins').addEventListener('click', e => { const m = +e.target.closest('button')?.dataset.m; if (m && RANGE.ll) openRange(RANGE.ll, m); });
+$('range-end').onclick = closeRange;

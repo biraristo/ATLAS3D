@@ -937,6 +937,7 @@ function showCtx(point, lngLat) {
     <button data-a="near"><span class="ms">travel_explore</span>Yakındaki restoranlar</button>
     <button data-a="measure"><span class="ms">straighten</span>Mesafe ölç</button>
     <button data-a="share"><span class="ms">share</span>Bu konumu paylaş</button>`;
+  if (typeof ctxExtra === 'function') ctxExtra(m, ll);
   m.hidden = false;
   const r = map.getContainer().getBoundingClientRect();
   m.style.left = Math.max(8, Math.min(point.x + r.left, innerWidth - m.offsetWidth - 8)) + 'px';
@@ -1176,6 +1177,7 @@ function viewSegment(a, b) {
 }
 async function loadAlternatives(coords, ctrl, a, b) {
   const mode = dir.mode, first = dir.routes[0];
+  const ttP = typeof fetchTomTomRoutes === 'function' ? fetchTomTomRoutes(coords, ctrl, mode) : null; // trafiğe göre / ücretsiz rotalar (paralel)
   try {
     const res = await fetch('/api/route?' + new URLSearchParams({ mode, alt: '1', coords }), { signal: ctrl.signal });
     const d = res.ok ? await res.json() : null;
@@ -1189,7 +1191,10 @@ async function loadAlternatives(coords, ctrl, a, b) {
       toast(`${d.routes.length - 1} alternatif rota bulundu`, 2500);
     }
   } catch (e) { if (e.name === 'AbortError') return; }
-  finally { if (ctrl === routeCtrl) { dir.altPending = false; if (!navActive) refreshDirResults(); } }
+  finally {
+    if (ttP) try { mergeTomTomRoutes(await ttP, ctrl, mode, a, b); } catch (e) { console.warn('tomtom', e); }
+    if (ctrl === routeCtrl) { dir.altPending = false; if (!navActive) refreshDirResults(); }
+  }
 }
 function fitRoute() {
   const r = dir.routes[dir.sel]; if (!r) return;
@@ -1210,7 +1215,7 @@ function drawRoutes() {
 async function loadProfiles() {
   const routes = dir.routes;
   if (typeof loadTraffic === 'function') loadTraffic(routes);
-  await Promise.all(routes.map(async r => { try { r.profile = await buildProfile(r); } catch (e) { console.warn('profil', e); r.profile = null; } }));
+  await Promise.all(routes.map(async r => { if (r.profile) return; try { r.profile = await buildProfile(r); } catch (e) { console.warn('profil', e); r.profile = null; } }));
   if (dir.routes !== routes) return;
   for (const r of routes) if (r.profile) for (const s of r.steps) { const a = profileAt(r.profile, s.at), b = profileAt(r.profile, Math.min(r.total, s.at + s.distance)); s.dElev = b.elev - a.elev; }
   drawRoutes(); refreshDirResults();

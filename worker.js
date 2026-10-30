@@ -133,6 +133,55 @@ const routes = {
    /api/traffic/flow/{z}/{x}/{y}.png        trafik akış karosu (2 dk önbellek)
    /api/traffic/incidents/{z}/{x}/{y}.png   kaza / yol çalışması karosu (2 dk önbellek)
    POST /api/traffic/route  { points: [[lon,lat],...] }  → güzergâhın trafikli süresi ve sıkışık kesimleri */
+// TomTom rota yanıtını uygulamanın kullandığı OSRM biçimine çevir
+const TT_MAN = {
+  DEPART: ['depart'], ARRIVE: ['arrive'], ARRIVE_LEFT: ['arrive', 'left'], ARRIVE_RIGHT: ['arrive', 'right'],
+  STRAIGHT: ['continue', 'straight'], FOLLOW: ['continue', 'straight'],
+  TURN_RIGHT: ['turn', 'right'], TURN_LEFT: ['turn', 'left'], BEAR_RIGHT: ['turn', 'slight right'], BEAR_LEFT: ['turn', 'slight left'],
+  SHARP_RIGHT: ['turn', 'sharp right'], SHARP_LEFT: ['turn', 'sharp left'], KEEP_RIGHT: ['fork', 'right'], KEEP_LEFT: ['fork', 'left'],
+  MAKE_UTURN: ['turn', 'uturn'], TRY_MAKE_UTURN: ['turn', 'uturn'],
+  ENTER_MOTORWAY: ['on ramp'], ENTER_FREEWAY: ['on ramp'], ENTER_HIGHWAY: ['on ramp'], ENTRANCE_RAMP: ['on ramp'],
+  TAKE_EXIT: ['off ramp', 'right'], MOTORWAY_EXIT_RIGHT: ['off ramp', 'right'], MOTORWAY_EXIT_LEFT: ['off ramp', 'left'],
+  ROUNDABOUT_CROSS: ['roundabout', 'straight'], ROUNDABOUT_RIGHT: ['roundabout', 'right'], ROUNDABOUT_LEFT: ['roundabout', 'left'], ROUNDABOUT_BACK: ['roundabout', 'left'],
+  SWITCH_PARALLEL_ROAD: ['fork', 'right'], SWITCH_MAIN_ROAD: ['fork', 'left'], TAKE_FERRY: ['notification', 'straight']
+};
+function ttBearing(a, b) {
+  const r = Math.PI / 180, y = Math.sin((b[0] - a[0]) * r) * Math.cos(b[1] * r);
+  const x = Math.cos(a[1] * r) * Math.sin(b[1] * r) - Math.sin(a[1] * r) * Math.cos(b[1] * r) * Math.cos((b[0] - a[0]) * r);
+  return (Math.atan2(y, x) / r + 360) % 360;
+}
+function ttToOsrm(rt, avoid) {
+  const pts = (rt.legs || []).flatMap((l, i) => (i ? (l.points || []).slice(1) : l.points || [])).map(p => [p.longitude, p.latitude]);
+  const s = rt.summary || {}, ins = rt.guidance?.instructions || [];
+  const steps = ins.map((it, k) => {
+    const nx = ins[k + 1], [type, mod0] = TT_MAN[it.maneuver] || ['continue', 'straight'];
+    let mod = mod0;
+    if (type === 'on ramp') mod = (it.turnAngleInDecimalDegrees || 0) < 0 ? 'left' : 'right';
+    const pi = Math.min(it.pointIndex ?? 0, pts.length - 1), loc = [it.point?.longitude ?? pts[pi][0], it.point?.latitude ?? pts[pi][1]];
+    return {
+      maneuver: { type, modifier: mod, location: loc, bearing_after: pts[pi + 1] ? ttBearing(pts[pi], pts[pi + 1]) : 0, exit: it.roundaboutExitNumber },
+      name: it.street || '', ref: (it.roadNumbers || []).join(' / '), destinations: it.signpostText || '',
+      distance: nx ? nx.routeOffsetInMeters - it.routeOffsetInMeters : 0, duration: nx ? nx.travelTimeInSeconds - it.travelTimeInSeconds : 0
+    };
+  });
+  const roads = [...new Set(ins.filter(i => i.roadNumbers?.length).map(i => i.roadNumbers[0]))].slice(0, 2).join(', ');
+  const tolls = (rt.sections || []).filter(x => x.sectionType === 'TOLL_ROAD').length;
+  return {
+    provider: 'tomtom', avoidToll: avoid, hasTollSections: tolls > 0,
+    geometry: { type: 'LineString', coordinates: pts }, distance: s.lengthInMeters, duration: s.noTrafficTravelTimeInSeconds ?? s.travelTimeInSeconds,
+    legs: [{ summary: roads, steps }],
+    traffic: {
+      length: s.lengthInMeters, travel: s.travelTimeInSeconds, delay: s.trafficDelayInSeconds || 0, noTraffic: s.noTrafficTravelTimeInSeconds ?? null,
+      historic: s.historicTrafficTravelTimeInSeconds ?? null, trafficLength: s.trafficLengthInMeters || 0,
+      sections: (rt.sections || []).filter(x => x.sectionType === 'TRAFFIC').map(x => ({
+        cat: x.simpleCategory || 'OTHER', speed: x.effectiveSpeedInKmh ?? null, delay: x.delayInSeconds || 0, mag: x.magnitudeOfDelay ?? 0,
+        cause: x.tec?.causes?.[0]?.mainCauseCode ?? null, coords: pts.slice(x.startPointIndex, (x.endPointIndex ?? x.startPointIndex) + 1)
+      })),
+      at: Date.now()
+    }
+  };
+}
+
 async function traffic(request, url, env, ctx) {
   const key = env.TOMTOM_API_KEY;
   if (!key) return json({ error: 'traffic-disabled' }, 404);
@@ -177,6 +226,39 @@ async function traffic(request, url, env, ctx) {
       at: Date.now()
     };
     const res = new Response(JSON.stringify(out), { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=120' } });
+    ctx.waitUntil(caches.default.put(cacheKey, res.clone()));
+    return res;
+  }
+  // TomTom'un kendi rotaları (trafiğe göre alternatifler / ücretli yollardan kaçınan rota), OSRM biçimine çevrilmiş
+  if (url.pathname === '/api/traffic/routes') {
+    const c = (url.searchParams.get('coords') || '').split(';').map(p => p.split(',').map(Number));
+    if (c.length !== 2 || !c.every(p => p.length === 2 && p.every(Number.isFinite))) return json({ error: 'coords' }, 400);
+    const avoid = url.searchParams.get('avoid') === 'toll', alts = Math.max(0, Math.min(3, +url.searchParams.get('alt') || 0));
+    const cacheKey = new Request(`https://atlas3d.cache/traffic/routes/${c.flat().map(v => v.toFixed(5)).join(',')}/${avoid ? 't' : ''}${alts}`);
+    const hit = await caches.default.match(cacheKey); if (hit) return hit;
+    const up = `${base}/routing/1/calculateRoute/${c[0][1]},${c[0][0]}:${c[1][1]},${c[1][0]}/json?key=${key}&traffic=true&travelMode=car&maxAlternatives=${alts}` +
+      `&instructionsType=coded&sectionType=traffic&sectionType=tollRoad&computeTravelTimeFor=all&routeRepresentation=polyline${avoid ? '&avoid=tollRoads' : ''}`;
+    const r = await fetch(up);
+    if (!r.ok) return json({ code: 'Error', error: 'upstream ' + r.status, detail: (await r.text()).slice(0, 300).replace(key, '***') }, r.status === 429 ? 429 : 502);
+    const d = await r.json();
+    const out = { code: 'Ok', routes: (d.routes || []).map(rt => ttToOsrm(rt, avoid)) };
+    const res = new Response(JSON.stringify(out), { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=120' } });
+    ctx.waitUntil(caches.default.put(cacheKey, res.clone()));
+    return res;
+  }
+  // Ulaşılabilir alan: verilen sürede (trafikle) gidilebilecek bölgenin sınırı
+  if (url.pathname === '/api/traffic/range') {
+    const lat = +url.searchParams.get('lat'), lon = +url.searchParams.get('lon'), min = Math.max(5, Math.min(120, +url.searchParams.get('min') || 30));
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return json({ error: 'coords' }, 400);
+    const cacheKey = new Request(`https://atlas3d.cache/traffic/range/${lat.toFixed(4)},${lon.toFixed(4)}/${min}`);
+    const hit = await caches.default.match(cacheKey); if (hit) return hit;
+    const up = `${base}/routing/1/calculateReachableRange/${lat},${lon}/json?key=${key}&timeBudgetInSec=${min * 60}&traffic=true&travelMode=car`;
+    const r = await fetch(up);
+    if (!r.ok) return json({ error: 'upstream ' + r.status, detail: (await r.text()).slice(0, 300).replace(key, '***') }, r.status === 429 ? 429 : 502);
+    const d = await r.json();
+    const ring = (d.reachableRange?.boundary || []).map(p => [p.longitude, p.latitude]);
+    if (ring.length) ring.push(ring[0]);
+    const res = new Response(JSON.stringify({ min, ring, at: Date.now() }), { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=300' } });
     ctx.waitUntil(caches.default.put(cacheKey, res.clone()));
     return res;
   }

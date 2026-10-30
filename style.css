@@ -514,3 +514,10 @@ button.hud{font:inherit;color:inherit;text-align:left;border:0;cursor:pointer;po
 .tr-list li:first-child{border-top:0}
 .tr-list li:hover .tl-m b{text-decoration:underline}
 .tr-list .ms{font-size:20px;margin-top:1px}
+.tr-tag{display:inline-flex;align-items:center;gap:3px;font-size:12px;font-weight:500;color:#5f6368}
+.tr-tag .ms{font-size:16px}
+.range-bar #range-text{font-weight:500;margin-right:4px}
+.range-mins{display:flex;gap:4px}
+.range-mins button{border:1px solid var(--line);background:var(--bg);border-radius:999px;padding:4px 10px;font:inherit;font-size:13px;cursor:pointer;color:inherit}
+.range-mins button.on{background:#e8f0fe;border-color:#aecbfa;color:#1967d2;font-weight:600}
+@media (max-width:520px){.range-bar{white-space:normal;flex-wrap:wrap;justify-content:center;width:calc(100% - 24px);border-radius:18px;padding:8px 10px}}

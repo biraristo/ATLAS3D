@@ -67,7 +67,7 @@ function ensureContours() {
 }
 
 /* ================= Arazi seçenekleri ================= */
-opts.slope ??= false; opts.contours ??= false; opts.exag ??= EXAG;
+opts.slope ??= false; opts.contours ??= true; opts.exag ??= EXAG;
 function applyTerrainOpts() {
   if (!map?.getLayer('a3-sat')) return;
   if (opts.slope) ensureSlopeLayer();

@@ -107,7 +107,7 @@ const TERRARIUM = ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/
 const EXAG = 1.2;
 const OWN = new Set(); // bizim eklediğimiz katmanlar
 let styleLayerIds = [], baseVisibility = {};
-let basemap = store.get('basemap', 'default');
+let basemap = store.get('basemap', 'terrain'); if (basemap !== 'satellite') basemap = 'terrain'; // harita = arazi görünümü
 const opts = store.get('opts', { terrain: true, buildings: true, labels: true });
 let cfg = {};
 const cfgReady = fetch('/api/config', { cache: 'no-store' }).then(r => r.ok ? r.json() : {}).catch(() => ({})).then(d => (cfg = d || {}));
@@ -175,7 +175,6 @@ function onMapLoad() {
   addOwnSourcesAndLayers();
   handleUrlParams();
   updateTilt(); updateCompass();
-  cfgReady.then(c => { if (c.google) addGoogleBasemap(); });
   map.on('moveend', debounce(() => {
     if (navActive) return;
     const c = map.getCenter();
@@ -185,9 +184,8 @@ function onMapLoad() {
 
 /* ----- Altlık / katmanlar ----- */
 const BASEMAPS = {
-  default: { label: 'Varsayılan', thumb: `${ESRI}/World_Street_Map/MapServer/tile/12/1535/2393` },
-  satellite: { label: 'Uydu', thumb: `${ESRI}/World_Imagery/MapServer/tile/12/1535/2393` },
-  terrain: { label: 'Arazi', thumb: 'https://a.tile.opentopomap.org/12/2393/1535.png' }
+  terrain: { label: 'Harita', thumb: 'https://a.tile.opentopomap.org/12/2393/1535.png' },
+  satellite: { label: 'Uydu', thumb: `${ESRI}/World_Imagery/MapServer/tile/12/1535/2393` }
 };
 function applyBasemap() {
   if (!map?.getLayer('a3-sat')) return;
@@ -207,7 +205,7 @@ function applyBasemap() {
   map.setLayoutProperty('a3-hillshade', 'visibility', sat ? 'none' : 'visible');
   map.setPaintProperty('a3-hillshade', 'hillshade-exaggeration', basemap === 'terrain' ? 0.75 : 0.22);
   // Katman düğmesinde "diğer" seçenek görünür (Google gibi)
-  const other = sat ? 'default' : 'satellite';
+  const other = sat ? 'terrain' : 'satellite';
   $('layers-thumb').style.backgroundImage = `url(${BASEMAPS[other].thumb})`;
   $('layers-btn').dataset.other = other;
   document.querySelectorAll('.bm').forEach(b => { b.classList.toggle('on', b.dataset.id === basemap); b.setAttribute('aria-checked', b.dataset.id === basemap); });
@@ -216,12 +214,12 @@ function setBasemap(id) {
   if (id === 'google') { openGoogle3D(); return; }
   basemap = id; store.set('basemap', id); applyBasemap();
 }
-const BM_ICON = { default: 'map', satellite: 'satellite_alt', terrain: 'terrain', google: 'public' };
+const BM_ICON = { terrain: 'landscape', satellite: 'satellite_alt' };
 function renderLayerPop() {
   const row = $('mapbar-seg'); row.innerHTML = '';
   for (const [id, b] of Object.entries(BASEMAPS)) {
     const btn = document.createElement('button'); btn.className = 'bm'; btn.dataset.id = id; btn.setAttribute('role', 'radio');
-    btn.innerHTML = `<span class="ms">${BM_ICON[id] || 'map'}</span><span>${id === 'default' ? 'Harita' : b.label}</span>`;
+    btn.innerHTML = `<span class="ms">${BM_ICON[id] || 'map'}</span><span>${b.label}</span>`;
     btn.onclick = () => setBasemap(id);
     row.appendChild(btn);
   }

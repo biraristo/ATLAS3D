@@ -293,6 +293,7 @@ function slopeColor(s) {
 }
 // Türkçe yüzde yazımı: işaret + % + sayı (ör. +%8, −%5, %0)
 const fmtSlope = s => { const v = Math.round(s); return (v > 0 ? '+' : v < 0 ? '−' : '') + '%' + nf0.format(Math.abs(v)); };
+const fmtInt = v => { const r = Math.round(v) || 0; return (r < 0 ? '−' : '') + nf0.format(Math.abs(r)); };
 const fmtPct1 = s => { const v = Math.round(s * 10) / 10; return (v > 0 ? '+' : v < 0 ? '−' : '') + '%' + nf1.format(Math.abs(v)); };
 const ARROW = s => s > 2 ? 'trending_up' : s < -2 ? 'trending_down' : 'trending_flat';
 
@@ -424,7 +425,7 @@ function profileSvg(pr, id = 'prof') {
   const line = pr.elevs.map((e, i) => (i ? 'L' : 'M') + x(pr.dists[i]).toFixed(1) + ' ' + y(e).toFixed(1)).join('');
   const area = line + `L${(L + w).toFixed(1)} ${T + h}L${L} ${T + h}Z`;
   const stops = profileGradientStops(pr).map(([o, c]) => `<stop offset="${(o * 100).toFixed(2)}%" stop-color="${c}"/>`).join('');
-  const ticks = [pr.min, pr.min + span / 2, pr.max].map(e => `<text x="${L - 4}" y="${y(e) + 4}" text-anchor="end" class="ax">${nf0.format(Math.round(e))}</text><line x1="${L}" x2="${L + w}" y1="${y(e)}" y2="${y(e)}" class="grid"/>`).join('');
+  const ticks = [pr.min, pr.min + span / 2, pr.max].map(e => `<text x="${L - 4}" y="${y(e) + 4}" text-anchor="end" class="ax">${fmtInt((e))}</text><line x1="${L}" x2="${L + w}" y1="${y(e)}" y2="${y(e)}" class="grid"/>`).join('');
   const xt = [0, 0.25, 0.5, 0.75, 1].map(f => `<text x="${x(pr.len * f)}" y="${H - 4}" text-anchor="${f === 0 ? 'start' : f === 1 ? 'end' : 'middle'}" class="ax">${fmtDist(pr.len * f)}</text>`).join('');
   return `<svg class="prof" id="${id}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" data-l="${L}" data-w="${w}">
     <defs><linearGradient id="${id}-g" x1="0" x2="1" y1="0" y2="0">${stops}</linearGradient></defs>
@@ -433,12 +434,12 @@ function profileSvg(pr, id = 'prof') {
 }
 function profileStatsHtml(pr) {
   return `<div class="pstats">
-    <div><span class="ms" style="color:#dc2626">arrow_upward</span><b>${nf0.format(Math.round(pr.ascent))} m</b><small>tırmanış</small></div>
-    <div><span class="ms" style="color:#2563eb">arrow_downward</span><b>${nf0.format(Math.round(pr.descent))} m</b><small>iniş</small></div>
-    <div><span class="ms">landscape</span><b>${nf0.format(Math.round(pr.min))}–${nf0.format(Math.round(pr.max))} m</b><small>rakım</small></div>
+    <div><span class="ms" style="color:#dc2626">arrow_upward</span><b>${fmtInt((pr.ascent))} m</b><small>tırmanış</small></div>
+    <div><span class="ms" style="color:#2563eb">arrow_downward</span><b>${fmtInt((pr.descent))} m</b><small>iniş</small></div>
+    <div><span class="ms">landscape</span><b>${fmtInt(pr.min)}–${fmtInt((pr.max))} m</b><small>rakım</small></div>
     <div><span class="ms" style="color:${slopeColor(pr.maxUp)}">trending_up</span><b>${fmtSlope(pr.maxUp)}</b><small>en dik çıkış</small></div>
     <div><span class="ms" style="color:${slopeColor(pr.maxDown)}">trending_down</span><b>${fmtSlope(pr.maxDown)}</b><small>en dik iniş</small></div>
-    <div><span class="ms">${ARROW((pr.elevs[pr.elevs.length - 1] - pr.elevs[0]) / pr.len * 100)}</span><b>${(pr.elevs[pr.elevs.length - 1] - pr.elevs[0]) > 0 ? '+' : ''}${nf0.format(Math.round(pr.elevs[pr.elevs.length - 1] - pr.elevs[0]))} m</b><small>net fark</small></div>
+    <div><span class="ms">${ARROW((pr.elevs[pr.elevs.length - 1] - pr.elevs[0]) / pr.len * 100)}</span><b>${(pr.elevs[pr.elevs.length - 1] - pr.elevs[0]) > 0 ? '+' : ''}${fmtInt((pr.elevs[pr.elevs.length - 1] - pr.elevs[0]))} m</b><small>net fark</small></div>
   </div>`;
 }
 let profMarker = null;
@@ -1075,7 +1076,7 @@ function dirResultsHtml() {
       <span class="ms">${MODES[dir.mode].icon}</span>
       <div style="flex:1">
         <div><span class="t ${r.duration > fastest * 1.15 ? 'slow' : ''}">${fmtDur(r.duration)}</span><span class="d">${fmtDist(r.distance)}</span></div>
-        <div class="via">${r.legs[0].summary ? esc(r.legs[0].summary) + ' üzerinden' : ''}${i === 0 && dir.routes.length > 1 ? ' · En hızlı rota' : ''}</div>
+        <div class="via">${r.summaryText ? esc(r.summaryText) + ' üzerinden' : ''}${i === 0 && dir.routes.length > 1 ? ' · En hızlı rota' : ''}</div>
         <div class="via">Tahmini varış: ${fmtClock(new Date(now + r.duration * 1000))}</div>
         ${r.profile ? `<div class="via climb"><span style="color:#dc2626">↑ ${nf0.format(Math.round(r.profile.ascent))} m</span> <span style="color:#2563eb">↓ ${nf0.format(Math.round(r.profile.descent))} m</span>${r.profile.steep.length ? ` · ${r.profile.steep.length} dik bölüm` : ''}${r.profile.tAdj ? ` · eğime göre ~${fmtDur(r.profile.tAdj)}` : ''}</div>` : ''}
         ${i === dir.sel ? `<div class="btns"><button class="btn primary" id="nav-start"><span class="ms">navigation</span>Başlat</button><button class="btn outline" id="steps-toggle"><span class="ms">list</span>${dir.showSteps ? 'Adımları gizle' : 'Adımlar'}</button><button class="btn outline" id="fly-btn" title="Rotayı 3D önizle"><span class="ms">3d_rotation</span>3D önizle</button><button class="btn outline" id="dir-share" aria-label="Paylaş"><span class="ms">share</span></button></div>` : ''}
@@ -1088,7 +1089,8 @@ function dirResultsHtml() {
   const steepHtml = pr && pr.steep.length ? `<div class="section-title" style="padding:10px 24px 2px">Dik bölümler</div><div class="steep-list">${pr.steep.map((s, i) => `<div class="steep" data-k="${i}"><span class="ms" style="color:${slopeColor(s.grade)}">${s.grade > 0 ? 'trending_up' : 'trending_down'}</span><div><b>${fmtDist(s.len)} boyunca ortalama ${fmtSlope(s.grade)} ${s.grade > 0 ? 'tırmanış' : 'iniş'}</b><small>${fmtDist(s.from)} sonra başlar · ${s.dh > 0 ? '+' : ''}${nf0.format(Math.round(s.dh))} m · en dik ${fmtSlope(s.max)}</small></div></div>`).join('')}</div>` : '';
   const dE = v => v == null ? '' : Math.abs(v) < 3 ? '' : ` · <span style="color:${v > 0 ? '#dc2626' : '#2563eb'}">${v > 0 ? '↑' : '↓'} ${nf0.format(Math.round(Math.abs(v)))} m</span>`;
   const steps = dir.showSteps ? `<div class="step-sum">${esc(dir.from.name)} → ${esc(dir.to.name)}</div><ol class="steps">${r.steps.map((s, i) => `<li class="step" data-s="${i}"><span class="ms">${s.icon}</span><div>${esc(s.text)}<div class="sd">${s.distance > 0 ? fmtDist(s.distance) : ''}${dE(s.dElev)}</div></div></li>`).join('')}</ol>` : '';
-  return opt + prof + steepHtml + steps + '<div class="mini-note">Süreler trafik içermez. Yükseklik verisi ~30 m çözünürlüklü arazi modelinden hesaplanır.</div>';
+  const altNote = dir.altPending ? '<div class="alt-pending"><span class="spinner sm"></span>Alternatif rotalar aranıyor…</div>' : '';
+  return opt + altNote + prof + steepHtml + steps + '<div class="mini-note">Süreler trafik içermez. Yükseklik verisi ~30 m çözünürlüklü arazi modelinden hesaplanır.</div>';
 }
 function wireDirResults() {
   const box = $('dir-results'); if (!box) return;
@@ -1128,14 +1130,16 @@ async function computeRoute({ quiet = false, fromOverride = null } = {}) {
   try {
     const a = fromOverride || await resolvePoint(dir.from), b = await resolvePoint(dir.to);
     if (haversine([a.lon, a.lat], [b.lon, b.lat]) < 5) throw new Error('Başlangıç ve hedef aynı yer.');
-    const res = await fetch('/api/route?' + new URLSearchParams({ mode: dir.mode, alt: quiet ? '0' : '1', coords: `${a.lon.toFixed(6)},${a.lat.toFixed(6)};${b.lon.toFixed(6)},${b.lat.toFixed(6)}` }), { signal: ctrl.signal });
+    const coords = `${a.lon.toFixed(6)},${a.lat.toFixed(6)};${b.lon.toFixed(6)},${b.lat.toFixed(6)}`;
+    // Önce en hızlı rota (hızlı yanıt), alternatifler ardından arka planda
+    const res = await fetch('/api/route?' + new URLSearchParams({ mode: dir.mode, alt: '0', coords }), { signal: ctrl.signal });
     if (!res.ok) throw new Error('Rota servisi yanıt vermedi (' + res.status + '). Biraz sonra tekrar deneyin.');
     const d = await res.json();
     if (d.code !== 'Ok' || !d.routes?.length) throw new Error('Bu iki nokta arasında rota bulunamadı.');
     dir.routes = d.routes.map(prepRoute);
     dir.sel = 0; dir.loading = false; dir.error = '';
     drawRoutes(); setRouteMarkers(a, b); loadProfiles();
-    if (!quiet) { refreshDirResults(); if (isMobile()) setSheet('peek'); fitRoute(); }
+    if (!quiet) { dir.altPending = true; refreshDirResults(); if (isMobile()) setSheet('peek'); fitRoute(); loadAlternatives(coords, ctrl, a, b); }
     return true;
   } catch (e) {
     if (e.name === 'AbortError') return false;
@@ -1154,6 +1158,23 @@ function viewSegment(a, b) {
   const pad = mapPadding(), usable = Math.max(200, Math.min(innerWidth - pad.left - pad.right, (innerHeight - pad.top - pad.bottom) * 1.6));
   const zoom = Math.max(8, Math.min(16.5, Math.log2(156543.03 * Math.cos(mid[1] * Math.PI / 180) * usable * 0.55 / len)));
   map.flyTo({ center: mid, zoom, pitch: 60, bearing: (bearingOf(a, b) - 90 + 360) % 360, padding: pad, duration: 1400, essential: true });
+}
+async function loadAlternatives(coords, ctrl, a, b) {
+  const mode = dir.mode, first = dir.routes[0];
+  try {
+    const res = await fetch('/api/route?' + new URLSearchParams({ mode, alt: '1', coords }), { signal: ctrl.signal });
+    const d = res.ok ? await res.json() : null;
+    // Kullanıcı bu arada rotayı değiştirdiyse, navigasyona başladıysa veya başka rota seçtiyse dokunma
+    if (!d?.routes?.length || ctrl !== routeCtrl || dir.mode !== mode || dir.routes[0] !== first || navActive) return;
+    if (d.routes.length > 1) {
+      const sel = dir.routes[dir.sel];
+      dir.routes = d.routes.map(prepRoute);
+      dir.sel = 0; drawRoutes(); setRouteMarkers(a, b); loadProfiles();
+      if (sel !== first) selectRoute(0);
+      toast(`${d.routes.length - 1} alternatif rota bulundu`, 2500);
+    }
+  } catch (e) { if (e.name === 'AbortError') return; }
+  finally { if (ctrl === routeCtrl) { dir.altPending = false; if (!navActive) refreshDirResults(); } }
 }
 function fitRoute() {
   const r = dir.routes[dir.sel]; if (!r) return;
@@ -1215,7 +1236,11 @@ function prepRoute(r) {
   const coords = r.geometry.coordinates;
   const cum = [0]; for (let i = 1; i < coords.length; i++) cum.push(cum[i - 1] + haversine(coords[i - 1], coords[i]));
   const steps = []; let ci = 0;
-  for (const leg of r.legs) for (const s of leg.steps) {
+  // Ara noktalı (üretilmiş alternatif) rotalarda ara noktadaki "varış/kalkış" adımları gösterilmez
+  const nl = r.legs.length;
+  r.summaryText = [...new Set(r.legs.flatMap(l => (l.summary || '').split(', ')).filter(Boolean))].slice(0, 2).join(', ');
+  for (const [li, leg] of r.legs.entries()) for (const s of leg.steps) {
+    if ((s.maneuver.type === 'arrive' && li < nl - 1) || (s.maneuver.type === 'depart' && li > 0)) continue;
     const [text, icon] = instruction(s);
     const loc = s.maneuver.location; let best = ci, bd = Infinity;
     for (let j = ci; j < coords.length; j++) { const d = Math.abs(coords[j][0] - loc[0]) + Math.abs(coords[j][1] - loc[1]); if (d < bd) { bd = d; best = j; } if (d < 1e-7) break; }

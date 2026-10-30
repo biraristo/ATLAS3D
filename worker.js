@@ -58,8 +58,66 @@ const routes = {
     const svc = { car: 'routed-car', foot: 'routed-foot', bike: 'routed-bike' }[p.get('mode')];
     const c = (p.get('coords') || '').split(';').map(s => s.split(',').map(v => num(v, 6)));
     if (!svc || c.length !== 2 || c.some(x => x.length !== 2 || x.includes(null))) return json({ error: 'params' }, 400);
-    const alt = p.get('alt') === '1' ? '3' : 'false';
-    return cachedFetch(`https://routing.openstreetmap.de/${svc}/route/v1/driving/${c.map(x => x.join(',')).join(';')}?overview=full&geometries=geojson&steps=true&alternatives=${alt}`, 600, ctx, origin);
+    const base = `https://routing.openstreetmap.de/${svc}/route/v1/driving/`, q = '?overview=full&geometries=geojson&steps=true';
+    if (p.get('alt') !== '1') return cachedFetch(base + c.map(x => x.join(',')).join(';') + q + '&alternatives=false', 600, ctx, origin);
+    const key = new Request('https://atlas3d.cache/route-alt/' + svc + '/' + c.map(x => x.join(',')).join(';'));
+    const hit = p.get('debug') === '1' ? null : await caches.default.match(key);
+    if (hit) return hit;
+    let lastErr = '', busy = false;
+    const get = async coords => {
+      const r = await fetch(base + coords.map(x => x.join(',')).join(';') + q + (coords.length === 2 ? '&alternatives=3' : '&alternatives=false'), { headers: { 'User-Agent': UA } });
+      if (!r.ok) { lastErr = 'HTTP ' + r.status; if (r.status === 429 || r.status >= 500) busy = true; return null; }
+      const d = await r.json(); if (d.code !== 'Ok') lastErr = d.code; return d.code === 'Ok' ? d : null;
+    };
+    const main = await get(c);
+    if (!main) return json({ code: lastErr === 'NoRoute' ? 'NoRoute' : 'Error', message: lastErr, routes: [] }, lastErr === 'NoRoute' ? 200 : 502);
+    const routes = main.routes.slice(0, 3);
+    if (routes.length < 3) {
+      // Ücretsiz OSRM uzun yolda nadiren alternatif verir: düz çizginin iki yanına ara noktalar koyup farklı güzergâhlar ara
+      const [A, B] = c.map(x => x.map(Number)), lat0 = (A[1] + B[1]) / 2 * Math.PI / 180, kx = Math.cos(lat0);
+      const dx = (B[0] - A[0]) * kx, dy = B[1] - A[1], L = Math.hypot(dx, dy) || 1e-9, nx = -dy / L, ny = dx / L;
+      const vias = [[0.5, 0.05], [0.5, -0.05], [0.5, 0.13], [0.5, -0.13], [0.33, 0.09], [0.67, -0.09], [0.33, -0.09], [0.67, 0.09], [0.5, 0.25], [0.5, -0.25]].map(([t, o]) =>
+        [+(A[0] + (B[0] - A[0]) * t + nx * o * L / kx).toFixed(6), +(A[1] + (B[1] - A[1]) * t + ny * o * L).toFixed(6)]);
+      const fastest = routes[0];
+      const cell = (pt, s) => Math.floor(pt[0] / s) + ':' + Math.floor(pt[1] / s);
+      const cellSet = (coords, s) => { const set = new Set(); for (const p of coords) set.add(cell(p, s)); return set; };
+      const near = (set, pt, s) => { const x = Math.floor(pt[0] / s), y = Math.floor(pt[1] / s); for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) if (set.has((x + i) + ':' + (y + j))) return true; return false; };
+      const segLen = (a, b) => Math.hypot((b[0] - a[0]) * kx, b[1] - a[1]);
+      const overlap = (coords, set) => { let tot = 0, on = 0; for (let i = 1; i < coords.length; i++) { const l = segLen(coords[i - 1], coords[i]); tot += l; if (near(set, coords[i], 0.0012)) on += l; } return tot ? on / tot : 1; };
+      const accepted = routes.map(r => cellSet(r.geometry.coordinates, 0.0012));
+      // Yola girip aynı yoldan geri çıkan sapma (ara nokta tali yolda kalırsa): sapmanın başladığı indeksi döndür, yoksa -1
+      const spurAt = (coords, via) => {
+        if (!via) return -1; let iv = 0, best = Infinity;
+        coords.forEach((p, i) => { const d = segLen(p, via); if (d < best) { best = d; iv = i; } });
+        const span = 0.05, after = []; let acc = 0;
+        for (let i = iv; i < coords.length - 1 && acc < span; i++) { acc += segLen(coords[i], coords[i + 1]); after.push(coords[i + 1]); }
+        if (after.length < 3) return -1;
+        const set = cellSet(after, 0.0004); let j = -1; acc = 0;
+        for (let i = iv - 1; i >= 0 && acc < span; i--) { acc += segLen(coords[i], coords[i + 1]); if (near(set, coords[i], 0.0004)) j = i; }
+        return j >= 0 && (iv - j) > 2 ? j : -1;
+      };
+      const spur = (coords, via) => spurAt(coords, via) >= 0;
+      const dbg = [];
+      const consider = ({ r, via }) => {
+        const co = r.geometry.coordinates;
+        if (p.get('debug') === '1') dbg.push({ km: Math.round(r.distance / 1000), min: Math.round(r.duration / 60), ratio: +(r.duration / fastest.duration).toFixed(2), ov: accepted.map(s => +overlap(co, s).toFixed(2)), spur: spur(co, via) });
+        if (routes.length >= 3 || r.duration > fastest.duration * 1.4 || r.distance > fastest.distance * 1.5) return;
+        if (accepted.some(set => overlap(co, set) > 0.78) || spur(co, via)) return;
+        r.viaAlt = true; routes.push(r); accepted.push(cellSet(co, 0.0012));
+      };
+      // Topluluk sunucusunu yormamak için ara noktaları önem sırasıyla üçerli gruplar halinde dene; yeterli alternatif bulununca dur
+      for (let k = 0; k < vias.length && routes.length < 3 && !busy; k += 3) {
+        const got = (await Promise.all(vias.slice(k, k + 3).map(v => get([A, v, B]).catch(() => null)))).filter(Boolean).map(d => ({ r: d.routes[0], via: d.waypoints?.[1]?.location }));
+        // Sapmalı adayı, sapmanın hemen öncesindeki (ana güzergâh üzerindeki) noktadan geçecek şekilde yeniden iste
+        const fixes = await Promise.all(got.map(cnd => { const j = spurAt(cnd.r.geometry.coordinates, cnd.via); return j >= 0 && !busy ? get([A, cnd.r.geometry.coordinates[Math.max(0, j - 2)], B]).catch(() => null) : cnd; }));
+        fixes.filter(Boolean).map(x => x.routes ? { r: x.routes[0], via: x.waypoints?.[1]?.location } : x).sort((a, b) => a.r.duration - b.r.duration).forEach(consider);
+      }
+      if (dbg.length) routes.dbg = dbg;
+    }
+    routes.sort((a, b) => a.duration - b.duration);
+    const res = new Response(JSON.stringify({ code: 'Ok', routes, waypoints: main.waypoints, ...(routes.dbg ? { debug: routes.dbg } : {}) }), { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=' + (busy ? 300 : 86400) } });
+    if (p.get('debug') !== '1') ctx.waitUntil(caches.default.put(key, res.clone()));
+    return res;
   },
   async '/api/nearby'(p, ctx, origin) {
     const q = clean(p.get('q')); const bb = (p.get('bbox') || '').split(',').map(v => num(v, 3));

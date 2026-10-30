@@ -470,3 +470,5 @@ button.hud{font:inherit;color:inherit;text-align:left;border:0;cursor:pointer;po
   body:not(.navigating):not(.panel-open) .maplibregl-ctrl-bottom-right{bottom:calc(84px + var(--safe-b))}
 }
 @media (max-width:720px){ body.panel-open .hud{display:none} }
+.alt-pending{display:flex;align-items:center;gap:10px;padding:12px 24px;color:var(--muted);font-size:13px;border-bottom:1px solid var(--line)}
+.spinner.sm{width:16px;height:16px;border-width:2px;margin:0}

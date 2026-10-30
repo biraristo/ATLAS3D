@@ -291,14 +291,17 @@ function slopeColor(s) {
     const A = h(C[i - 1][1]), B = h(C[i][1]); return 'rgb(' + A.map((v, k) => Math.round(v + (B[k] - v) * t)).join(',') + ')';
   }
 }
-const fmtSlope = s => (s > 0 ? '+' : '') + nf0.format(Math.round(s)) + '%';
+// Türkçe yüzde yazımı: işaret + % + sayı (ör. +%8, −%5, %0)
+const fmtSlope = s => { const v = Math.round(s); return (v > 0 ? '+' : v < 0 ? '−' : '') + '%' + nf0.format(Math.abs(v)); };
+const fmtPct1 = s => { const v = Math.round(s * 10) / 10; return (v > 0 ? '+' : v < 0 ? '−' : '') + '%' + nf1.format(Math.abs(v)); };
 const ARROW = s => s > 2 ? 'trending_up' : s < -2 ? 'trending_down' : 'trending_flat';
 
 /* ---- Rota profili ---- */
 async function buildProfile(r, z0) {
   const len = r.total; if (!len) return null;
-  const N = Math.min(900, Math.max(60, Math.round(len / 30)));
-  const z = z0 ?? (len < 40000 ? 13 : len < 250000 ? 12 : 11);
+  // Uzun rotalarda da yokuşlar kaybolmasın: en fazla 3000 örnek; karo yakınlığı mesafeye göre
+  const N = Math.min(3000, Math.max(60, Math.round(len / 30)));
+  const z = z0 ?? (len < 40000 ? 13 : len < 200000 ? 12 : len < 500000 ? 11 : 10);
   const dists = [], pts = [];
   let j = 0;
   for (let i = 0; i <= N; i++) {
@@ -314,6 +317,38 @@ async function buildProfile(r, z0) {
   // Gürültü filtresi: araçta ~100 m, yayada ~60 m pencereli yumuşatma (köprü/yarma sıçramalarını da bastırır)
   const W = Math.max(1, Math.round((car ? 100 : 60) / step));
   const elevs = raw.map((_, i) => { let s = 0, n = 0; for (let k = -W; k <= W; k++) { const v = raw[i + k]; if (v != null) { s += v; n++; } } return s / n; });
+  // Tünel ve viyadük düzeltmesi (araç): arazi modeli tünelde dağın üstünü, viyadükte vadinin dibini ölçer.
+  // Hızlı yolda kısa, %9'u aşan tümsek/çukur görülür ama giriş–çıkış arası genel eğim makulse düz geçişle değiştirilir.
+  let fixedSegs = 0;
+  if (car && r.steps?.length) {
+    const spd = new Float32Array(elevs.length); let si = 0;
+    for (let i = 0; i < elevs.length; i++) {
+      while (si < r.steps.length - 1 && r.steps[si + 1].at <= dists[i]) si++;
+      const st = r.steps[si]; spd[i] = st.duration > 0 ? st.distance / st.duration * 3.6 : 0;
+    }
+    const K0 = Math.max(1, Math.round(75 / step)), T = 9, gap = Math.max(1, Math.round(400 / step));
+    const g = i => { const a = Math.max(0, i - K0), b = Math.min(elevs.length - 1, i + K0); return (elevs[b] - elevs[a]) / ((b - a) * step) * 100; };
+    const sus = elevs.map((_, i) => spd[i] >= 55 && Math.abs(g(i)) > T);
+    // Şüpheli kümeleri topla; bir tümseğin çıkış ve iniş yamaçları ayrı kümeler olabilir, birlikte de dene
+    const cl = [];
+    for (let i = 0; i < sus.length; i++) {
+      if (!sus[i]) continue;
+      let j = i, last = i;
+      while (j < sus.length && j - last <= gap) { if (sus[j]) last = j; j++; }
+      cl.push({ a: Math.max(0, i - K0), b: Math.min(elevs.length - 1, last + K0) });
+      i = last;
+    }
+    for (let c = 0; c < cl.length; c++) {
+      for (let d = c; d < cl.length; d++) {
+        const a = cl[c].a, b = cl[d].b, L = (b - a) * step;
+        if (L > 8000) break;
+        if (b > a + 1 && Math.abs(elevs[b] - elevs[a]) / L * 100 <= T) {
+          for (let k = a + 1; k < b; k++) elevs[k] = elevs[a] + (elevs[b] - elevs[a]) * (k - a) / (b - a);
+          fixedSegs++; c = d; break;
+        }
+      }
+    }
+  }
   // Eğim: araçta ~200 m, yayada ~100 m'lik merkezli fark
   const K = Math.max(1, Math.round((car ? 100 : 50) / step));
   const slopes = elevs.map((_, i) => { const a = Math.max(0, i - K), b = Math.min(elevs.length - 1, i + K); return b > a ? (elevs[b] - elevs[a]) / ((b - a) * step) * 100 : 0; });
@@ -367,7 +402,7 @@ async function buildProfile(r, z0) {
       tAdj += step / (v / 3.6);
     }
   }
-  return { dists, elevs, slopes, runs, pts, step, len, ascent, descent, cumUp, cumDown, steep, tAdj, min: Math.min(...elevs), max: Math.max(...elevs), maxUp: Math.max(...slopes), maxDown: Math.min(...slopes) };
+  return { dists, elevs, slopes, runs, pts, step, len, fixedSegs, ascent, descent, cumUp, cumDown, steep, tAdj, min: Math.min(...elevs), max: Math.max(...elevs), maxUp: Math.max(...slopes), maxDown: Math.min(...slopes) };
 }
 function profileAt(pr, d) {
   const i = Math.max(0, Math.min(pr.elevs.length - 1, Math.round(d / pr.step)));
@@ -721,7 +756,7 @@ function showPlace(p, { fly = false, push = false } = {}) {
       }).catch(() => {});
     }
   }
-  if (p.elev == null) DEM.slopeAt(p.lon, p.lat).then(({ elev, slope }) => { if (elev == null) throw 0; p.elev = elev; p.slope = slope; const e = $('elev'); if (e && isTop()) e.innerHTML = nf0.format(Math.round(elev)) + ' m' + (slope != null ? ` <small style="color:#5f6368;font-weight:400">· arazi eğimi ${nf0.format(Math.round(slope))}%</small>` : ''); }).catch(() => { const e = $('elev'); if (e && isTop()) e.textContent = '—'; });
+  if (p.elev == null) DEM.slopeAt(p.lon, p.lat).then(({ elev, slope }) => { if (elev == null) throw 0; p.elev = elev; p.slope = slope; const e = $('elev'); if (e && isTop()) e.innerHTML = nf0.format(Math.round(elev)) + ' m' + (slope != null ? ` <small style="color:#5f6368;font-weight:400">· arazi eğimi ${fmtSlope(slope).replace('+', '')}</small>` : ''); }).catch(() => { const e = $('elev'); if (e && isTop()) e.textContent = '—'; });
 }
 function renderPlace(el, p) {
   const t = p.tags || {};
@@ -1047,7 +1082,7 @@ function dirResultsHtml() {
       </div>
     </div>`).join('');
   const r = dir.routes[dir.sel], pr = r.profile;
-  const prof = pr ? `<div class="profile"><div class="section-title" style="padding:14px 24px 2px">Yükseklik profili</div>${profileStatsHtml(pr)}${profileSvg(pr)}<div class="ptip" id="prof-tip">Grafikte gezdirin: haritada konumu gösterir</div>
+  const prof = pr ? `<div class="profile"><div class="prof-head"><div class="section-title" style="padding:0">Yükseklik profili</div><button class="text-btn" id="ana-open"><span class="ms" style="font-size:18px;vertical-align:-4px">insights</span> Ayrıntılı analiz</button></div>${profileStatsHtml(pr)}${profileSvg(pr)}<div class="ptip" id="prof-tip">Grafikte gezdirin: haritada konumu gösterir</div>
     <div class="legend"><span><i style="background:#2563eb"></i>iniş</span><span><i style="background:#22c55e"></i>düz</span><span><i style="background:#facc15"></i>hafif tırmanış</span><span><i style="background:#f97316"></i>dik</span><span><i style="background:#dc2626"></i>çok dik</span></div></div>`
     : (pr === null ? '' : '<div class="loading" style="padding:16px"><div class="spinner"></div>Yükseklik profili hesaplanıyor…</div>');
   const steepHtml = pr && pr.steep.length ? `<div class="section-title" style="padding:10px 24px 2px">Dik bölümler</div><div class="steep-list">${pr.steep.map((s, i) => `<div class="steep" data-k="${i}"><span class="ms" style="color:${slopeColor(s.grade)}">${s.grade > 0 ? 'trending_up' : 'trending_down'}</span><div><b>${fmtDist(s.len)} boyunca ortalama ${fmtSlope(s.grade)} ${s.grade > 0 ? 'tırmanış' : 'iniş'}</b><small>${fmtDist(s.from)} sonra başlar · ${s.dh > 0 ? '+' : ''}${nf0.format(Math.round(s.dh))} m · en dik ${fmtSlope(s.max)}</small></div></div>`).join('')}</div>` : '';
@@ -1067,6 +1102,7 @@ function wireDirResults() {
     share('Yol tarifi: ' + dir.to.name, u.toString());
   });
   $('fly-btn')?.addEventListener('click', () => flyover(dir.routes[dir.sel]));
+  $('ana-open')?.addEventListener('click', () => openAnalysis(dir.routes[dir.sel]));
   box.querySelectorAll('.steep').forEach(el => {
     el.onclick = () => {
       const r = dir.routes[dir.sel], s = r.profile.steep[+el.dataset.k];
@@ -1173,13 +1209,13 @@ function prepRoute(r) {
     const loc = s.maneuver.location; let best = ci, bd = Infinity;
     for (let j = ci; j < coords.length; j++) { const d = Math.abs(coords[j][0] - loc[0]) + Math.abs(coords[j][1] - loc[1]); if (d < bd) { bd = d; best = j; } if (d < 1e-7) break; }
     ci = best;
-    steps.push({ text, icon, distance: s.distance, loc, at: cum[best], bearing: s.maneuver.bearing_after, type: s.maneuver.type });
+    steps.push({ text, icon, distance: s.distance, duration: s.duration, loc, at: cum[best], bearing: s.maneuver.bearing_after, type: s.maneuver.type });
   }
   return { ...r, coords, cum, steps, total: cum[cum.length - 1] };
 }
 
 /* ================= Navigasyon ================= */
-let navCamAt = 0, navActive = false, navBearing = null, navRoute = null, navAnnounced = new Set(), navOff = 0, navFollow = true, navMuted = store.get('muted', false), wakeLock = null, navLastIdx = 0, rerouting = false;
+let navAlong = 0, navCamAt = 0, navActive = false, navBearing = null, navRoute = null, navAnnounced = new Set(), navOff = 0, navFollow = true, navMuted = store.get('muted', false), wakeLock = null, navLastIdx = 0, rerouting = false;
 async function startNav() {
   if (!dir.routes[dir.sel]) return;
   try { await ensureMe(); } catch (e) { toast(e.message + ' Navigasyon için konum gerekli.', 6000); return; }
@@ -1197,6 +1233,7 @@ async function startNav() {
   say(navRoute.steps[0]?.text.replace(' — ', ', ') || 'Navigasyon başladı');
 }
 function stopNav() {
+  if (typeof AN !== 'undefined' && AN.open && AN.nav) closeAnalysis();
   navActive = false; meListeners.delete(navTick);
   body.classList.remove('navigating');
   ['nav-top', 'nav-bottom', 'nav-next', 'nav-terrain'].forEach(id => { $(id).hidden = true; });
@@ -1239,7 +1276,8 @@ async function navTick(force) {
     if (ok) { navRoute = dir.routes[0]; dir.sel = 0; navAnnounced = new Set(); navLastIdx = 0; drawRoutes(); }
     return;
   }
-  const along = s.along, remaining = Math.max(0, r.total - along);
+  const along = s.along, remaining = Math.max(0, r.total - along); navAlong = along;
+  if (typeof analysisTick === 'function') analysisTick(along);
   let nextIdx = r.steps.findIndex((st, i) => i > 0 && st.at > along + 3);
   if (nextIdx < 0) nextIdx = r.steps.length - 1;
   const next = r.steps[nextIdx], toNext = Math.max(0, next.at - along);
@@ -1256,7 +1294,7 @@ async function navTick(force) {
     $('nav-terrain').hidden = false;
     $('nav-terrain').innerHTML = `<span><span class="ms">landscape</span>${nf0.format(Math.round(p.elev))} m</span>
       <span style="color:${slopeColor(sl)}"><span class="ms">${ARROW(sl)}</span>${fmtSlope(sl)} ${sl > 2 ? 'tırmanış' : sl < -2 ? 'iniş' : 'düz'}</span>
-      <span><span class="ms" style="color:#dc2626">arrow_upward</span>${nf0.format(Math.round(p.upLeft))} m</span><span><span class="ms" style="color:#2563eb">arrow_downward</span>${nf0.format(Math.round(p.downLeft))} m</span>`;
+      <span><span class="ms" style="color:#dc2626">arrow_upward</span>${nf0.format(Math.round(p.upLeft))} m</span><span><span class="ms" style="color:#2563eb">arrow_downward</span>${nf0.format(Math.round(p.downLeft))} m</span><span class="ms nt-more" aria-hidden="true">chevron_right</span>`;
   }
   if (r.profile) for (const [k, st] of r.profile.steep.entries()) {
     const ahead = st.from - along, key = 'steep:' + k, warnAt = dir.mode === 'car' ? 500 : 150;
@@ -1302,7 +1340,7 @@ async function updateHud(lngLat, label) {
     if (seq !== hudSeq || elev == null) return;
     const dirName = aspect == null ? '' : COMPASS[Math.round(aspect / 45) % 8];
     $('hud-elev').textContent = nf0.format(Math.round(elev)) + ' m';
-    $('hud-slope').innerHTML = slope == null ? '' : `<span class="ms" style="color:${slopeColor(slope)}">${slope > 3 ? 'trending_up' : 'trending_flat'}</span>${nf0.format(Math.round(slope))}% ${slope > 3 ? '· yokuş ' + dirName.toLowerCase() + ' yönüne' : 'düz'}`;
+    $('hud-slope').innerHTML = slope == null ? '' : `<span class="ms" style="color:${slopeColor(slope)}">${slope > 3 ? 'trending_up' : 'trending_flat'}</span>${fmtSlope(slope).replace('+', '')} ${slope > 3 ? '· yokuş ' + dirName.toLowerCase() + ' yönüne' : 'düz'}`;
     $('hud-label').textContent = label;
     $('hud').hidden = false;
   } catch {}

@@ -25,21 +25,34 @@ const FUELS = {
 const EV_PRICE_DEFAULT = 14.4; // DC hızlı şarj, Ekim 2026 operatör ortalaması (₺/kWh); kullanıcı değiştirebilir
 const FUEL_FALLBACK = { benzin: 76.31, dizel: 96.82, lpg: 42.36, date: '2026-10-30', source: 'EPDK bülteni (son bilinen)' };
 
-const VEH = Object.assign({ body: 'sedan', fuel: 'benzin', avg: null, pax: 1, price: null }, store.get('vehicle', {}));
-if (!BODIES[VEH.body]) VEH.body = 'sedan';
-if (!FUELS[VEH.fuel] || !(VEH.fuel in BODIES[VEH.body].avg)) VEH.fuel = 'benzin';
-const saveVeh = () => store.set('vehicle', VEH);
-const vehAvg = () => VEH.avg || BODIES[VEH.body].avg[VEH.fuel];
+// Araçlarım: birden fazla araç saklanır, rota maliyeti seçili (aktif) araca göre hesaplanır. Eski tek araç kaydı taşınır.
+const fixVeh = v => { if (!BODIES[v.body]) v.body = 'sedan'; if (!FUELS[v.fuel] || !(v.fuel in BODIES[v.body].avg)) v.fuel = 'benzin'; v.pax = Math.max(1, Math.min(9, v.pax || 1)); v.name = (v.name || 'Aracım').slice(0, 30); return v; };
+const GARAGE = (() => {
+  let list = store.get('vehicles', null), active = store.get('vehicleActive', null);
+  if (!Array.isArray(list) || !list.length) { list = [{ id: 'v' + Date.now().toString(36), name: 'Aracım', body: 'sedan', fuel: 'benzin', avg: null, price: null, tank: null, pax: 1, ...store.get('vehicle', {}) }]; active = list[0].id; }
+  list.forEach(fixVeh);
+  return { list, active };
+})();
+let VEH = GARAGE.list.find(v => v.id === GARAGE.active) || GARAGE.list[0];
+const saveVeh = () => { store.set('vehicles', GARAGE.list); store.set('vehicleActive', VEH.id); };
+function setActiveVehicle(id) {
+  const v = GARAGE.list.find(x => x.id === id); if (!v || v === VEH) return;
+  v.pax = VEH.pax; VEH = v; saveVeh();
+  if (typeof clearCostCache === 'function') clearCostCache();
+  if (typeof refreshDirResults === 'function' && dir.routes.length) { const box = $('veh-box'); if (box) { box.innerHTML = vehChipHtml(); wireVehBox(); } refreshDirResults(); }
+}
+const vehAvg = (v = VEH) => v.avg || BODIES[v.body].avg[v.fuel];
 
 let FUEL_PRICES = store.get('fuelPrices', null) || FUEL_FALLBACK;
 const fuelPricesReady = fetch('/api/fuel').then(r => (r.ok ? r.json() : null)).then(d => {
   if (d && (d.benzin || d.dizel || d.lpg)) { FUEL_PRICES = { ...FUEL_FALLBACK, ...Object.fromEntries(Object.entries(d).filter(([, v]) => v != null)), source: 'EPDK' }; store.set('fuelPrices', FUEL_PRICES); }
 }).catch(() => {}).finally(() => { if (typeof refreshDirResults === 'function' && dir.routes.length) { clearCostCache(); refreshDirResults(); } });
-function unitPrice() {
-  if (VEH.price) return { v: VEH.price, src: 'Kendi girdiğiniz fiyat' };
-  if (VEH.fuel === 'elektrik') return { v: EV_PRICE_DEFAULT, src: 'DC hızlı şarj ortalaması' };
-  const d = FUEL_PRICES.date ? new Date(FUEL_PRICES.date + 'T12:00:00').toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' }) : '';
-  return { v: FUEL_PRICES[VEH.fuel], src: `EPDK bülteni${d ? ', ' + d : ''} · Türkiye ortalaması` };
+const priceDate = () => FUEL_PRICES.date ? new Date(FUEL_PRICES.date + 'T12:00:00').toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' }) : '';
+function unitPrice(v = VEH) {
+  if (v.price) return { v: v.price, src: 'Kendi girdiğiniz fiyat' };
+  if (v.fuel === 'elektrik') return { v: EV_PRICE_DEFAULT, src: 'DC hızlı şarj ortalaması' };
+  const d = priceDate();
+  return { v: FUEL_PRICES[v.fuel], src: `EPDK bülteni${d ? ', ' + d : ''} · Türkiye ortalaması` };
 }
 
 /* ----- Fizik modeli ----- */
@@ -132,7 +145,8 @@ function routeCost(r) {
 /* ----- Biçimlendirme ----- */
 const nf2 = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtQty = (q, u) => (q < 10 ? nf1 : nf0).format(q) + ' ' + u;
-const vehSummary = () => `${BODIES[VEH.body].label} · ${FUELS[VEH.fuel].label} · ${nf1.format(vehAvg())} ${FUELS[VEH.fuel].unit}/100 km${VEH.pax > 1 ? ` · ${VEH.pax} kişi` : ''}`;
+const vehSpec = (v = VEH) => `${BODIES[v.body].label} · ${FUELS[v.fuel].label} · ${nf1.format(vehAvg(v))} ${FUELS[v.fuel].unit}/100 km`;
+const vehSummary = () => `${VEH.name} · ${FUELS[VEH.fuel].label} · ${nf1.format(vehAvg())} ${FUELS[VEH.fuel].unit}/100 km${VEH.pax > 1 ? ` · ${VEH.pax} kişi` : ''}`;
 const SHARE_INFO = [['aero', 'Hava direnci', '#4285f4'], ['roll', 'Yuvarlanma', '#34a853'], ['grade', 'Yokuşlar', '#ea4335'], ['accel', 'Hızlanma', '#fbbc04'], ['idle', 'Rölanti ve sistemler', '#9aa0a6']];
 
 // Seçili rotanın maliyet kartı: yakıt, geçiş, toplam ve yakıtın nereye gittiği
@@ -161,6 +175,7 @@ function vehFormHtml() {
   const body = BODIES[VEH.body], fuels = Object.keys(FUELS).filter(f => f in body.avg), u = FUELS[VEH.fuel].unit, p = unitPrice();
   const seg = (name, items, cur) => `<div class="vf-seg" role="radiogroup">${items.map(([k, l]) => `<button type="button" role="radio" aria-checked="${k === cur}" class="${k === cur ? 'on' : ''}" data-${name}="${k}">${l}</button>`).join('')}</div>`;
   return `<div class="veh-form" id="veh-form">
+    ${GARAGE.list.length > 1 ? `<label class="vf-l">Araç</label>${seg('veh', GARAGE.list.map(v => [v.id, esc(v.name)]), VEH.id)}` : ''}
     <label class="vf-l">Araç tipi</label>${seg('body', Object.entries(BODIES).map(([k, b]) => [k, b.label]), VEH.body)}
     <label class="vf-l">Yakıt</label>${seg('fuel', fuels.map(f => [f, FUELS[f].label]), VEH.fuel)}
     <div class="vf-grid">
@@ -168,7 +183,7 @@ function vehFormHtml() {
       <label class="vf-f"><span>${VEH.fuel === 'elektrik' ? 'Şarj fiyatı' : 'Yakıt fiyatı'}</span><span class="vf-in"><input id="vf-price" inputmode="decimal" placeholder="${nf1.format(VEH.fuel === 'elektrik' ? EV_PRICE_DEFAULT : FUEL_PRICES[VEH.fuel])}" value="${VEH.price ? nf1.format(VEH.price) : ''}"><em>₺/${u}</em></span></label>
       <div class="vf-f"><span>Yolcu</span><span class="vf-step"><button type="button" id="vf-minus" aria-label="Azalt">−</button><b>${VEH.pax}</b><button type="button" id="vf-plus" aria-label="Artır">+</button></span></div>
     </div>
-    <p class="vf-note">Tüketimi aracınızın yol bilgisayarından girin; boş bırakırsanız tipik değer kullanılır. Fiyat boşsa ${esc(p.src)}.</p>
+    <p class="vf-note">Tüketimi aracınızın yol bilgisayarından girin; boş bırakırsanız tipik değer kullanılır. Fiyat boşsa ${esc(p.src)}. Araç eklemek için menüden <b>Araçlarım</b>.</p>
   </div>`;
 }
 const parseNum = s => { const v = parseFloat(String(s).replace(/\s/g, '').replace(',', '.')); return Number.isFinite(v) && v > 0 ? v : null; };
@@ -176,6 +191,7 @@ function wireVehicle(root, rerender) {
   const chip = root.querySelector('#veh-chip'); if (!chip) return;
   const apply = () => { saveVeh(); clearCostCache(); rerender(); };
   chip.onclick = () => { dir.vehOpen = !dir.vehOpen; rerender(); };
+  root.querySelectorAll('[data-veh]').forEach(b => { b.onclick = () => { setActiveVehicle(b.dataset.veh); rerender(); }; });
   root.querySelectorAll('[data-body]').forEach(b => { b.onclick = () => { VEH.body = b.dataset.body; if (!(VEH.fuel in BODIES[VEH.body].avg)) VEH.fuel = 'benzin'; VEH.avg = null; apply(); }; });
   root.querySelectorAll('[data-fuel]').forEach(b => { b.onclick = () => { if (VEH.fuel !== b.dataset.fuel) { VEH.fuel = b.dataset.fuel; VEH.avg = null; VEH.price = null; } apply(); }; });
   const num = (id, key, max) => { const el = root.querySelector('#' + id); if (el) el.onchange = () => { const v = parseNum(el.value); VEH[key] = v && v <= max ? v : null; apply(); }; };
@@ -271,6 +287,7 @@ function liveFuelStop() {
   if (LIVE.dist < 1000) return;
   const u = FUELS[VEH.fuel].unit, price = unitPrice().v, km = LIVE.dist / 1000, q = Math.max(0, LIVE.qty);
   const per = q / km * 100, mins = LIVE.sec / 60;
+  saveTrip({ t: Date.now(), to: dir.to?.name || '', dist: LIVE.dist, sec: LIVE.sec, qty: q, unit: u, fuel: VEH.fuel, fuelCost: q * price, tolls: liveTolls(), veh: VEH.name });
   const box = $('nav-sum'); if (!box) return;
   box.innerHTML = `<div class="ns-h"><span class="ms">local_gas_station</span><b>Yolculuk özeti</b><button class="icon-btn" id="ns-close" aria-label="Kapat"><span class="ms">close</span></button></div>
     <div class="ns-grid">
@@ -285,4 +302,104 @@ function liveFuelStop() {
   box.hidden = false;
   $('ns-close').onclick = () => { box.hidden = true; };
   clearTimeout(liveFuelStop._t); liveFuelStop._t = setTimeout(() => { box.hidden = true; }, 30000);
+}
+
+/* ================= Araçlarım ================= */
+const per100Cost = (v = VEH) => vehAvg(v) * (unitPrice(v).v || 0);
+function openGarage({ push = false } = {}) {
+  closeDrawer?.();
+  const render = el => {
+    el.innerHTML = `<div class="list-head drag-zone"><h2>Araçlarım</h2><small>Rota maliyeti ve anlık tüketim seçili araca göre hesaplanır</small></div>
+      <div class="gv-list">${GARAGE.list.map(v => `
+        <div class="gv ${v === VEH ? 'on' : ''}" data-id="${v.id}">
+          <span class="ms gv-i">${BODIES[v.body].icon}</span>
+          <div class="gv-m"><b>${esc(v.name)}${v === VEH ? '<em>Seçili</em>' : ''}</b><small>${esc(vehSpec(v))}${v.tank ? ` · depo ${nf0.format(v.tank)} ${FUELS[v.fuel].unit}` : ''}</small>
+            <small>100 km ≈ <b>${fmtTL(per100Cost(v))}</b>${v.tank ? ` · bir depoyla ~${nf0.format(v.tank / vehAvg(v) * 100)} km` : ''}</small></div>
+          <div class="gv-a">${v === VEH ? '' : `<button class="btn outline sm" data-sel="${v.id}">Seç</button>`}<button class="icon-btn" data-edit="${v.id}" aria-label="Düzenle"><span class="ms">edit</span></button></div>
+        </div>`).join('')}</div>
+      <div class="gv-add"><button class="btn primary" id="gv-add"><span class="ms">add</span>Araç ekle</button></div>
+      <p class="mini-note">Ortalama tüketimi aracınızın yol bilgisayarından girerseniz hesaplar size özel olur. Bilgiler yalnızca bu cihazda saklanır.</p>`;
+    el.querySelectorAll('[data-sel]').forEach(b => { b.onclick = () => { setActiveVehicle(b.dataset.sel); render(el); toast(`${VEH.name} seçildi`); }; });
+    el.querySelectorAll('[data-edit]').forEach(b => { b.onclick = () => editVehicle(GARAGE.list.find(v => v.id === b.dataset.edit)); });
+    el.querySelectorAll('.gv').forEach(c => { c.onclick = e => { if (!e.target.closest('button')) { setActiveVehicle(c.dataset.id); render(el); } }; });
+    $('gv-add').onclick = () => editVehicle(null);
+  };
+  render.mode = 'list';
+  openPanel(render, { mode: 'list', push, sheet: 'full' });
+}
+function editVehicle(v) {
+  const isNew = !v, d = v ? { ...v } : { id: 'v' + Date.now().toString(36), name: '', body: 'sedan', fuel: 'benzin', avg: null, price: null, tank: null, pax: 1 };
+  const render = el => {
+    const body = BODIES[d.body], fuels = Object.keys(FUELS).filter(f => f in body.avg), u = FUELS[d.fuel].unit;
+    const seg = (name, items, cur) => `<div class="vf-seg">${items.map(([k, l]) => `<button type="button" class="${k === cur ? 'on' : ''}" data-${name}="${k}">${l}</button>`).join('')}</div>`;
+    el.innerHTML = `<div class="list-head drag-zone"><h2>${isNew ? 'Araç ekle' : 'Aracı düzenle'}</h2><small>Tüketim ve fiyatı boş bırakırsanız tipik değer ve EPDK fiyatı kullanılır</small></div>
+      <div class="ve-form">
+        <label class="vf-f"><span>Araç adı</span><span class="vf-in"><input id="ve-name" maxlength="30" placeholder="ör. Clio, İş aracı" value="${esc(d.name)}"></span></label>
+        <label class="vf-l">Araç tipi</label>${seg('body', Object.entries(BODIES).map(([k, b]) => [k, b.label]), d.body)}
+        <label class="vf-l">Yakıt</label>${seg('fuel', fuels.map(f => [f, FUELS[f].label]), d.fuel)}
+        <div class="vf-grid">
+          <label class="vf-f"><span>Ortalama tüketim</span><span class="vf-in"><input id="ve-avg" inputmode="decimal" placeholder="${nf1.format(body.avg[d.fuel])}" value="${d.avg ? nf1.format(d.avg) : ''}"><em>${u}/100 km</em></span></label>
+          <label class="vf-f"><span>${d.fuel === 'elektrik' ? 'Batarya' : 'Depo hacmi'}</span><span class="vf-in"><input id="ve-tank" inputmode="decimal" placeholder="isteğe bağlı" value="${d.tank ? nf0.format(d.tank) : ''}"><em>${u}</em></span></label>
+          <label class="vf-f"><span>${d.fuel === 'elektrik' ? 'Şarj fiyatı' : 'Yakıt fiyatı'}</span><span class="vf-in"><input id="ve-price" inputmode="decimal" placeholder="${nf1.format(unitPrice({ ...d, price: null }).v || 0)}" value="${d.price ? nf1.format(d.price) : ''}"><em>₺/${u}</em></span></label>
+        </div>
+        <div class="ve-acts"><button class="btn primary" id="ve-save"><span class="ms">check</span>Kaydet</button><button class="btn outline" id="ve-cancel">Vazgeç</button>${!isNew && GARAGE.list.length > 1 ? '<button class="icon-btn ve-del" id="ve-del" aria-label="Aracı sil"><span class="ms">delete</span></button>' : ''}</div>
+      </div>`;
+    const read = () => { d.name = $('ve-name').value.trim(); d.avg = parseNum($('ve-avg').value); d.tank = parseNum($('ve-tank').value); d.price = parseNum($('ve-price').value); if (d.avg > 60) d.avg = null; if (d.price > 500) d.price = null; if (d.tank > 200) d.tank = null; };
+    el.querySelectorAll('[data-body]').forEach(b => { b.onclick = () => { read(); d.body = b.dataset.body; if (!(d.fuel in BODIES[d.body].avg)) d.fuel = 'benzin'; d.avg = null; render(el); }; });
+    el.querySelectorAll('[data-fuel]').forEach(b => { b.onclick = () => { read(); if (d.fuel !== b.dataset.fuel) { d.fuel = b.dataset.fuel; d.avg = null; d.price = null; d.tank = null; } render(el); }; });
+    $('ve-cancel').onclick = () => goBack();
+    $('ve-save').onclick = () => {
+      read(); if (!d.name) d.name = `${BODIES[d.body].label} ${GARAGE.list.length + (isNew ? 1 : 0)}`;
+      fixVeh(d);
+      if (isNew) { GARAGE.list.push(d); VEH = d; } else Object.assign(v, d);
+      saveVeh(); clearCostCache(); goBack(); toast(isNew ? `${d.name} eklendi ve seçildi` : 'Araç kaydedildi');
+      if (dir.routes.length) refreshDirResults();
+    };
+    $('ve-del')?.addEventListener('click', () => {
+      if (!confirm(`${v.name} silinsin mi?`)) return;
+      GARAGE.list.splice(GARAGE.list.indexOf(v), 1); if (VEH === v) VEH = GARAGE.list[0];
+      saveVeh(); clearCostCache(); goBack();
+    });
+    if (isNew) setTimeout(() => $('ve-name')?.focus(), 80);
+  };
+  render.mode = 'list';
+  openPanel(render, { mode: 'list', push: true, sheet: 'full' });
+}
+
+/* ================= Yolculuk geçmişi ================= */
+const trips = () => store.get('trips', []);
+function saveTrip(t) { const all = trips(); all.unshift(t); store.set('trips', all.slice(0, 200)); }
+function openTrips() {
+  const render = el => {
+    const all = trips(), now = new Date(), m0 = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const month = all.filter(t => t.t >= m0), sum = k => month.reduce((s, t) => s + (t[k] || 0), 0);
+    const fuelL = month.filter(t => t.unit !== 'kWh').reduce((s, t) => s + t.qty, 0);
+    el.innerHTML = `<div class="list-head drag-zone"><h2>Yolculuk geçmişi</h2><small>Navigasyonla yapılan yolculuklar · bu cihazda saklanır</small></div>
+      ${all.length ? `<div class="tr-sum"><div class="ts-h">${now.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}</div>
+        <div class="ts-g"><span><small>Yolculuk</small><b>${month.length}</b></span><span><small>Mesafe</small><b>${fmtDist(sum('dist'))}</b></span><span><small>Yakıt</small><b>${nf1.format(fuelL)} L</b></span><span><small>Toplam</small><b>${fmtTL(sum('total'))}</b></span></div></div>
+        <div class="tr-list">${all.map(t => `<div class="tr-it"><span class="ms">${t.fuel === 'elektrik' ? 'ev_station' : 'local_gas_station'}</span>
+          <div class="tr-m"><b>${t.to ? esc(t.to) : 'Yolculuk'}</b><small>${new Date(t.t).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} ${fmtClock(new Date(t.t))} · ${fmtDist(t.dist)} · ${fmtDur(t.sec)}</small>
+          <small>${esc(t.veh || '')} · ${fmtQty(t.qty, t.unit)} · ${nf1.format(t.qty / Math.max(0.1, t.dist / 1000) * 100)} ${t.unit}/100${t.tolls ? ` · geçiş ${fmtTL(t.tolls)}` : ''}</small></div>
+          <span class="tr-p">${fmtTL(t.total)}</span></div>`).join('')}</div>
+        <div class="gv-add"><button class="btn outline" id="tr-clear"><span class="ms">delete</span>Geçmişi temizle</button></div>`
+      : '<div class="empty">Henüz yolculuk yok.<br><small>Bir rotada <b>Başlat</b>\'a dokunun; navigasyon bitince yakıt ve maliyet burada listelenir.</small></div>'}`;
+    $('tr-clear')?.addEventListener('click', () => { if (confirm('Tüm yolculuk geçmişi silinsin mi?')) { store.set('trips', []); render(el); } });
+  };
+  render.mode = 'list';
+  openPanel(render, { mode: 'list', sheet: 'full' });
+}
+
+/* ================= Akaryakıt fiyatları ================= */
+function openPrices() {
+  const render = el => {
+    const rows = [['benzin', 'Benzin (95 oktan)', 'local_gas_station', FUEL_PRICES.benzin, 'L'], ['dizel', 'Motorin', 'local_gas_station', FUEL_PRICES.dizel, 'L'], ['lpg', 'Otogaz (LPG)', 'local_gas_station', FUEL_PRICES.lpg, 'L'], ['elektrik', 'Elektrik · DC hızlı şarj', 'ev_station', EV_PRICE_DEFAULT, 'kWh']];
+    el.innerHTML = `<div class="list-head drag-zone"><h2>Akaryakıt fiyatları</h2><small>EPDK günlük bülteni · Türkiye ortalaması · ${esc(priceDate())}</small></div>
+      <div class="pr-list">${rows.map(([k, l, ic, v, u]) => `<div class="pr-it ${k === VEH.fuel ? 'on' : ''}"><span class="ms">${ic}</span><span class="pr-m"><b>${l}</b>${k === 'elektrik' ? '<small>Operatör ortalaması, istasyona göre değişir</small>' : ''}${k === VEH.fuel ? `<small>${esc(VEH.name)} bu yakıtı kullanıyor${VEH.price ? ` · kendi fiyatınız ${nf1.format(VEH.price)} ₺` : ''}</small>` : ''}</span><span class="pr-p">${v ? nf1.format(v) + ' ₺' : '—'}<small>/${u}</small></span></div>`).join('')}</div>
+      <div class="pr-card"><span class="ms">${BODIES[VEH.body].icon}</span><div><b>${esc(VEH.name)} ile 100 km ≈ ${fmtTL(per100Cost())}</b><small>${esc(vehSpec())} · ${esc(unitPrice().src)}</small></div></div>
+      <div class="gv-add"><button class="btn outline" id="pr-edit"><span class="ms">edit</span>Aracım için fiyatı değiştir</button></div>
+      <p class="mini-note">Pompa fiyatı il ve istasyona göre birkaç lira farklı olabilir. Fiyatlar her gün EPDK'nın açık bülten servisinden alınır.</p>`;
+    $('pr-edit').onclick = () => editVehicle(VEH);
+  };
+  render.mode = 'list';
+  openPanel(render, { mode: 'list', sheet: 'full' });
 }

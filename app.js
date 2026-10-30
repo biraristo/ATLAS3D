@@ -112,8 +112,8 @@ const HIDPI = (devicePixelRatio || 1) >= 1.5, RASTER_TS = HIDPI ? 128 : 256;
 const HS_EXAG = k => ['interpolate', ['linear'], ['zoom'], 10, k, 14, k * 0.6, 16, k * 0.15, 17, 0];
 const OWN = new Set(); // bizim eklediğimiz katmanlar
 let styleLayerIds = [], baseVisibility = {};
-// Her açılış uydu görünümü ve 3D arazi ile başlar; oturum içindeki değişiklikler bir sonraki açılışı etkilemez
-let basemap = 'satellite';
+// Her açılış harita görünümü (arazi kabartmalı) ve 3D ile başlar; oturum içindeki değişiklikler bir sonraki açılışı etkilemez
+let basemap = 'terrain';
 const opts = { ...store.get('opts', { buildings: true, labels: true }), terrain: true };
 let cfg = {};
 const cfgReady = fetch('/api/config', { cache: 'no-store' }).then(r => r.ok ? r.json() : {}).catch(() => ({})).then(d => (cfg = d || {}));
@@ -161,7 +161,7 @@ const savedView = initialView();
 buildStyle().then(style => {
   map = new maplibregl.Map({
     container: 'map', style, hash: true, ...(savedView || (location.hash ? TR_VIEW : { ...TR_VIEW, pitch: PITCH_3D })),
-    maxPitch: 80, pixelRatio: Math.min(devicePixelRatio || 1, 2), fadeDuration: 120,
+    maxPitch: 85, pixelRatio: Math.min(devicePixelRatio || 1, 2), fadeDuration: 120,
     attributionControl: { compact: true }, cancelPendingTileRequestsWhileZooming: true
   });
   map.addControl(new maplibregl.ScaleControl({ unit: 'metric', maxWidth: 90 }), 'bottom-right');
@@ -705,7 +705,11 @@ async function showMainSuggest() {
   const box = $('suggest'), q = qInput.value.trim();
   let n;
   if (q.length >= 2) n = await autocomplete(q, box, { onPick: pickFromSearch });
-  else n = renderSuggest(box, recent().map(x => ({ ...x, sgIcon: 'history' })), { onPick: pickFromSearch, head: 'Son aramalar' });
+  else n = renderSuggest(box, recent().map(x => ({ ...x, sgIcon: 'history' })), {
+    head: 'Son aramalar', extra: myPlaceExtras().map(x => ({ ...x, mp: true, address: (x.address ? x.address + ' · ' : '') + 'yol tarifi' })),
+    // Ev / İş seçilirse doğrudan yol tarifi açılır
+    onPick: it => { if (!it.mp) return pickFromSearch(it); hideMainSuggest(); qInput.blur(); openDirections({ to: { name: it.name, lat: it.lat, lon: it.lon } }); }
+  });
   $('searchbox').classList.toggle('open', !!n && document.activeElement === qInput);
   if (document.activeElement !== qInput) box.hidden = true;
 }
@@ -994,18 +998,27 @@ document.addEventListener('pointerdown', e => { if (!$('ctx').hidden && !$('ctx'
 
 /* ----- Kontroller ----- */
 function updateCompass() { $('compass-icon').style.transform = `rotate(${-map.getBearing()}deg)`; }
-// Düğme o anki görünümü gösterir: eğik görünümde mavi "3D" (seçili), düz görünümde "2D"; dokununca diğerine geçer
+// Kamera modları: 2D (düz) → 3D (60°) → Ufuk (82°, ufuk çizgisi ve dağların yan yüzleri görünür) → 2D.
+// Düğme o anki modu gösterir; navigasyonda da aynı mod kullanılır.
+const PITCH_HORIZON = 82;
+const tiltMode = p => p > 72 ? 'horizon' : p > 10 ? '3d' : '2d';
 function updateTilt() {
-  const is3d = map.getPitch() > 10, b = $('tilt');
-  b.textContent = is3d ? '3D' : '2D'; b.classList.toggle('on', is3d); b.setAttribute('aria-pressed', is3d);
-  b.title = is3d ? '3D görünüm açık · 2D için dokunun' : '2D görünüm · 3D için dokunun';
+  const m = tiltMode(map.getPitch()), b = $('tilt');
+  b.textContent = m === 'horizon' ? 'Ufuk' : m === '3d' ? '3D' : '2D';
+  b.classList.toggle('on', m !== '2d'); b.classList.toggle('hz', m === 'horizon'); b.setAttribute('aria-pressed', m !== '2d');
+  b.title = m === 'horizon' ? 'Ufuk görünümü · 2D için dokunun' : m === '3d' ? '3D görünüm · ufuk görünümü için dokunun' : '2D görünüm · 3D için dokunun';
 }
 $('compass').onclick = () => map?.easeTo({ bearing: 0, duration: 500 });
 $('zoom-in').onclick = () => map?.zoomIn();
 $('zoom-out').onclick = () => map?.zoomOut();
 $('tilt').onclick = () => {
   if (!map) return;
-  if (map.getPitch() > 10) map.easeTo({ pitch: 0, bearing: 0, duration: 700 });
+  const m = tiltMode(navActive ? navPitch : map.getPitch());
+  const next = m === '2d' ? 60 : m === '3d' ? PITCH_HORIZON : 0;
+  if (navActive) { navPitch = next; navFollow = true; navTick(true); toast(next === 0 ? '2D görünüm' : next === 60 ? '3D görünüm' : 'Ufuk görünümü', 1500); return; }
+  // Ufuk modunda kamera biraz alçalır: yakın yamaçlar ve uzaktaki dağlar birlikte görünür
+  if (next === PITCH_HORIZON) map.easeTo({ pitch: next, zoom: Math.max(map.getZoom(), 13), bearing: map.getBearing() || -20, duration: 1100 });
+  else if (next === 0) map.easeTo({ pitch: 0, bearing: 0, duration: 700 });
   else map.easeTo({ pitch: 60, bearing: map.getBearing() || -20, duration: 900 });
 };
 
@@ -1096,7 +1109,7 @@ function renderDir(el) {
     const show = () => {
       const q = input.value.trim();
       if (q.length >= 2 && q !== dir[which]?.name) autocomplete(q, box, { onPick: pick });
-      else renderSuggest(box, recent().slice(0, 5).map(x => ({ ...x, sgIcon: 'history' })), { onPick: pick, extra: [{ ...ME, sgIcon: 'my_location' }] });
+      else renderSuggest(box, recent().slice(0, 5).map(x => ({ ...x, sgIcon: 'history' })), { onPick: pick, extra: [{ ...ME, sgIcon: 'my_location' }, ...myPlaceExtras()] });
     };
     input.addEventListener('focus', () => { input.select(); show(); if (isMobile()) setSheet('full'); });
     input.addEventListener('input', debounce(show, 220));
@@ -1378,7 +1391,7 @@ function switchNavRoute(i) {
   navTick(true);
 }
 
-let navAlong = 0, navCamAt = 0, navActive = false, navBearing = null, navRoute = null, navAnnounced = new Set(), navOff = 0, navFollow = true, navMuted = store.get('muted', false), wakeLock = null, navLastIdx = 0, rerouting = false;
+let navPitch = 62, navAlong = 0, navCamAt = 0, navActive = false, navBearing = null, navRoute = null, navAnnounced = new Set(), navOff = 0, navFollow = true, navMuted = store.get('muted', false), wakeLock = null, navLastIdx = 0, rerouting = false;
 async function startNav() {
   if (!dir.routes[dir.sel]) return;
   try { await ensureMe(); } catch (e) { toast(e.message + ' Navigasyon için konum gerekli.', 6000); return; }
@@ -1497,7 +1510,7 @@ async function navTick(force) {
   if (navFollow && (force === true || now - navCamAt > 700)) {
     navCamAt = now + (force === true ? 300 : 0);
     if (map._elevationFreeze && map.terrain) map._elevationFreeze = false; // yarıda kalan animasyondan kalan donmayı çöz
-    map.easeTo({ center: s.off < 30 ? s.pos : meLngLat, bearing: navBearing, pitch: 62,
+    map.easeTo({ center: s.off < 30 ? s.pos : meLngLat, bearing: navBearing, pitch: navPitch,
     zoom: dir.mode === 'car' ? ((meSpeed ?? 0) > 20 ? 16.3 : 17.2) : 18,
     padding: { top: innerHeight * 0.4, bottom: 90, left: 20, right: 20 }, duration: force === true ? 900 : 600, easing: t => t });
   }
@@ -1544,12 +1557,74 @@ function endMeasure() {
 $('measure-end').onclick = endMeasure;
 $('measure-undo').onclick = () => { measurePts.pop(); measureMarkers.pop()?.remove(); updateMeasure(); };
 
+/* ================= Ev ve iş ================= */
+const myPlaces = () => store.get('myPlaces', {});
+const MP_INFO = { home: ['Ev', 'home'], work: ['İş', 'work'] };
+function myPlaceExtras() { const mp = myPlaces(); return Object.entries(MP_INFO).filter(([k]) => mp[k]).map(([k, [l, ic]]) => ({ ...mp[k], name: l, address: mp[k].name, sgIcon: ic })); }
+function openMyPlaces() {
+  let editing = null;
+  const render = el => {
+    const mp = myPlaces();
+    el.innerHTML = `<div class="list-head drag-zone"><h2>Ev ve iş</h2><small>Tek dokunuşla yol tarifi · bu cihazda saklanır</small></div>
+      ${Object.entries(MP_INFO).map(([k, [l, ic]]) => `<div class="mp-row">
+        <span class="ms mp-i">${ic}</span>
+        <div class="mp-m"><b>${l}</b><small>${mp[k] ? esc(mp[k].name) : 'Ayarlanmadı'}</small></div>
+        ${mp[k] ? `<button class="btn primary sm" data-go="${k}"><span class="ms">directions</span>Git</button>` : ''}
+        <button class="btn outline sm" data-set="${k}">${mp[k] ? 'Değiştir' : 'Ayarla'}</button>
+      </div>${editing === k ? `<div class="mp-edit"><div class="dir-in"><input id="mp-q" placeholder="${l} adresini arayın" autocomplete="off"><div class="suggest" id="mp-sg" hidden></div></div>
+        <div class="mp-acts"><button class="text-btn" id="mp-here"><span class="ms">my_location</span>Şu anki konumum</button>${mp[k] ? '<button class="text-btn" id="mp-del">Kaldır</button>' : ''}<button class="text-btn" id="mp-cancel">Vazgeç</button></div></div>` : ''}`).join('')}
+      <p class="mini-note">Ev ve iş adresleri yol tarifinde ve aramada öneri olarak da çıkar.</p>`;
+    el.querySelectorAll('[data-go]').forEach(b => { b.onclick = () => { const p = myPlaces()[b.dataset.go]; openDirections({ to: { ...p, name: MP_INFO[b.dataset.go][0] } }); }; });
+    el.querySelectorAll('[data-set]').forEach(b => { b.onclick = () => { editing = b.dataset.set; render(el); setTimeout(() => $('mp-q')?.focus(), 50); }; });
+    if (!editing) return;
+    const save = p => { const all = myPlaces(); all[editing] = { name: p.name, lat: p.lat, lon: p.lon }; store.set('myPlaces', all); toast(`${MP_INFO[editing][0]} kaydedildi`); editing = null; render(el); };
+    const input = $('mp-q'), box = $('mp-sg');
+    input.addEventListener('input', debounce(() => { const q = input.value.trim(); if (q.length >= 2) autocomplete(q, box, { onPick: p => { box.hidden = true; save(p); } }); else box.hidden = true; }, 220));
+    $('mp-cancel').onclick = () => { editing = null; render(el); };
+    $('mp-del')?.addEventListener('click', () => { const all = myPlaces(); delete all[editing]; store.set('myPlaces', all); editing = null; render(el); });
+    $('mp-here').onclick = async () => {
+      try { const ll = await ensureMe(); let name = 'Kayıtlı konum';
+        try { const d = await api('/api/reverse', { lat: ll[1], lon: ll[0], zoom: 18 }); name = [d.address?.road, d.address?.house_number, d.address?.suburb || d.address?.town || d.address?.city].filter(Boolean).join(' ') || d.name || name; } catch {}
+        save({ name, lat: ll[1], lon: ll[0] });
+      } catch (e) { toast(e.message, 4000); }
+    };
+  };
+  render.mode = 'list';
+  openPanel(render, { mode: 'list', sheet: 'full' });
+}
+
 /* ================= Menü çekmecesi ================= */
-function openDrawer() { $('drawer').hidden = false; $('drawer-bg').hidden = false; }
+function openDrawer() {
+  // Menü her açılışta güncel bilgiyi gösterir: aktif araç, yolculuk sayısı, yakıt fiyatı, ev/iş
+  if (typeof VEH !== 'undefined') {
+    $('drawer-veh').innerHTML = `<span class="ms">${BODIES[VEH.body].icon}</span><span class="dv-m"><small>Aktif araç</small><b>${esc(VEH.name)}</b><small>${esc(vehSpec())}</small></span><span class="dv-p"><small>100 km</small><b>${fmtTL(per100Cost())}</b></span><span class="ms dv-c">chevron_right</span>`;
+    $('di-veh-count').textContent = GARAGE.list.length > 1 ? GARAGE.list.length + ' araç' : '';
+    const n = trips().length; $('di-trips').textContent = n ? n + '' : '';
+    const pv = unitPrice().v; $('di-price').textContent = pv ? nf1.format(pv) + ' ₺' : '';
+    const ev = VEH.fuel === 'elektrik';
+    $('di-st-icon').textContent = ev ? 'ev_station' : 'local_gas_station';
+    $('di-st-label').textContent = ev ? 'Yakındaki şarj istasyonları' : VEH.fuel === 'lpg' ? 'Yakındaki otogaz istasyonları' : 'Yakındaki benzinlikler';
+  }
+  const mp = myPlaces(); $('di-places').textContent = [mp.home && 'Ev', mp.work && 'İş'].filter(Boolean).join(' · ');
+  $('di-range').hidden = !(typeof TRAFFIC !== 'undefined' && TRAFFIC.on);
+  $('drawer').hidden = false; $('drawer-bg').hidden = false;
+}
 function closeDrawer() { $('drawer').hidden = true; $('drawer-bg').hidden = true; }
 $('menu-btn').onclick = openDrawer; $('drawer-close').onclick = closeDrawer; $('drawer-bg').onclick = closeDrawer;
 $('drawer').onclick = e => {
   const a = e.target.closest('[data-act]')?.dataset.act; if (!a) return; closeDrawer();
+  if (a === 'vehicles') openGarage();
+  if (a === 'trips') openTrips();
+  if (a === 'prices') openPrices();
+  if (a === 'places') openMyPlaces();
+  if (a === 'stations') {
+    const ev = VEH.fuel === 'elektrik';
+    nearby(ev ? { id: 'ev', label: 'Şarj istasyonları', icon: 'ev_station', q: 'charging station' } : { id: 'fuel', label: VEH.fuel === 'lpg' ? 'Otogaz istasyonları' : 'Benzinlikler', icon: 'local_gas_station', q: 'fuel' });
+  }
+  if (a === 'range' && typeof openRange === 'function') {
+    const c = map.getCenter(), ll = meLngLat ? { lat: meLngLat[1], lon: meLngLat[0] } : { lat: c.lat, lon: c.lng };
+    openRange(ll); toast(meLngLat ? 'Konumunuzdan ulaşılabilir alan' : 'Harita merkezinden ulaşılabilir alan', 2500);
+  }
   if (a === 'saved') showList('Kaydedilenler', saved(), { fit: true, sub: 'bu cihazda saklanır' });
   if (a === 'recent') showList('Son aramalar', recent(), { fit: true });
   if (a === 'measure') startMeasure();

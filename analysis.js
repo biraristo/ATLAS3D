@@ -578,14 +578,10 @@ $('hud').onclick = () => {
       </div>
       <div class="hud-actions">
         ${r?.profile ? '<button class="btn primary" id="hx-ana"><span class="ms">insights</span>Rotanın eğim analizi</button>' : '<button class="btn primary" id="hx-dir"><span class="ms">directions</span>Rota oluştur, eğimini gör</button>'}
-        <button class="btn outline" id="hx-slope"><span class="ms">trending_up</span>${opts.slope ? 'Eğim haritasını kapat' : 'Eğim haritasını aç'}</button>
-        <button class="btn outline" id="hx-cont"><span class="ms">terrain</span>${opts.contours ? 'Eş yükselti eğrilerini kapat' : 'Eş yükselti eğrilerini aç'}</button>
         <button class="btn outline" id="hx-loc"><span class="ms">my_location</span>Konumumu izle</button>
       </div>`;
     $('hx-ana')?.addEventListener('click', () => openAnalysis(r));
     $('hx-dir')?.addEventListener('click', () => openDirections({}));
-    $('hx-slope').onclick = () => { $('opt-slope').click(); $('hx-slope').lastChild.textContent = opts.slope ? 'Eğim haritasını kapat' : 'Eğim haritasını aç'; };
-    $('hx-cont').onclick = () => { $('opt-contours').click(); $('hx-cont').lastChild.textContent = opts.contours ? 'Eş yükselti eğrilerini kapat' : 'Eş yükselti eğrilerini aç'; };
     $('hx-loc').onclick = () => { closePanel(); locateMe(); };
   }, { mode: 'list' });
 };

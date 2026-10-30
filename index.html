@@ -21,7 +21,7 @@
 <link rel="preload" href="https://tiles.openfreemap.org/styles/liberty" as="fetch" crossorigin>
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" media="print" onload="this.media='all'">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0..1,0&icon_names=3d_rotation,ac_unit,accessible,account_balance,add,add_box,add_road,alt_route,apartment,architecture,arrow_back,arrow_downward,arrow_upward,attractions,bakery_dining,beach_access,block,bookmark,call,car_crash,car_repair,castle,checkroom,chevron_left,chevron_right,close,construction,content_copy,content_cut,dentistry,devices,directions,directions_bike,directions_boat,directions_bus,directions_car,directions_walk,download,ev_station,expand_less,fastfood,fit_screen,fitness_center,flag,flight,fork_left,fork_right,group,height,help,history,home,hotel,icecream,info,insights,install_mobile,ios_share,label,landscape,layers,list,local_atm,local_bar,local_cafe,local_fire_department,local_gas_station,local_grocery_store,local_hospital,local_library,local_mall,local_parking,local_pharmacy,local_police,local_post_office,local_shipping,location_city,location_on,map,menu,merge,money_off,mosque,movie,museum,my_location,navigation,north_east,park,pin_drop,pool,public,ramp_left,ramp_right,refresh,remove,restaurant,roundabout_left,roundabout_right,satellite_alt,schedule,school,search,share,show_chart,south_east,stadium,straight,straighten,subway,swap_vert,terrain,theater_comedy,timelapse,toll,traffic,train,tram,travel_explore,trending_down,trending_flat,trending_up,trip_origin,tune,turn_left,turn_right,turn_sharp_left,turn_sharp_right,turn_slight_left,turn_slight_right,two_wheeler,u_turn_left,volume_off,volume_up,warning,water,zoom_in,zoom_out&display=block">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0..1,0&icon_names=3d_rotation,ac_unit,accessible,account_balance,add,add_box,add_road,alt_route,apartment,architecture,arrow_back,arrow_downward,arrow_upward,attractions,bakery_dining,beach_access,block,bookmark,call,car_crash,car_repair,castle,check,checkroom,chevron_left,chevron_right,close,construction,content_copy,content_cut,delete,dentistry,devices,directions,directions_bike,directions_boat,directions_bus,directions_car,directions_walk,download,edit,ev_station,expand_less,fastfood,fit_screen,fitness_center,flag,flight,fork_left,fork_right,group,height,help,history,home,hotel,icecream,info,insights,install_mobile,ios_share,label,landscape,layers,list,local_atm,local_bar,local_cafe,local_fire_department,local_gas_station,local_grocery_store,local_hospital,local_library,local_mall,local_parking,local_pharmacy,local_police,local_post_office,local_shipping,location_city,location_on,map,menu,merge,money_off,mosque,movie,museum,my_location,navigation,north_east,park,pin_drop,pool,public,ramp_left,ramp_right,receipt_long,refresh,remove,restaurant,roundabout_left,roundabout_right,satellite_alt,schedule,school,search,share,show_chart,south_east,stadium,straight,straighten,subway,swap_vert,terrain,theater_comedy,timelapse,toll,traffic,train,tram,travel_explore,trending_down,trending_flat,trending_up,trip_origin,tune,turn_left,turn_right,turn_sharp_left,turn_sharp_right,turn_slight_left,turn_slight_right,two_wheeler,u_turn_left,volume_off,volume_up,warning,water,work,zoom_in,zoom_out&display=block">
 <link rel="stylesheet" href="./style.css">
 <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js" defer></script>
 <script src="./tolls.js" defer></script>
@@ -60,10 +60,9 @@
     <label class="lp-toggle" id="opt-traffic-row" hidden><input type="checkbox" id="opt-traffic"> <span class="ms">traffic</span> Canlı trafik</label>
     <div class="slope-legend tr-legend" id="traffic-legend" hidden><span><i style="background:#16e05f"></i>akıcı</span><span><i style="background:#f29900"></i>yavaş</span><span><i style="background:#ea4335"></i>sıkışık</span><span><i style="background:#a50e0e"></i>durma</span></div>
     <div class="lp-title">Arazi analizi</div>
-    <label class="lp-toggle"><input type="checkbox" id="opt-slope"> <span class="ms">trending_up</span> Eğim haritası</label>
-    <div class="slope-legend" id="slope-legend" hidden><span><i style="background:#a3e635"></i>%5–10</span><span><i style="background:#facc15"></i>%10–20</span><span><i style="background:#f97316"></i>%20–35</span><span><i style="background:#dc2626"></i>%35–60</span><span><i style="background:#7e22ce"></i>%60+</span></div>
-    <label class="lp-toggle"><input type="checkbox" id="opt-contours"> <span class="ms">terrain</span> Eş yükselti eğrileri</label>
-    <label class="lp-range"><span class="ms">height</span> Yükseklik abartma <input type="range" id="opt-exag" min="1" max="3" step="0.1" value="1.2"><b id="exag-val">1,2×</b></label>
+    <p class="lp-note">Eğim haritası ve eş yükselti eğrileri her zaman açıktır.</p>
+    <div class="slope-legend" id="slope-legend"><span><i style="background:#a3e635"></i>%5–10</span><span><i style="background:#facc15"></i>%10–20</span><span><i style="background:#f97316"></i>%20–35</span><span><i style="background:#dc2626"></i>%35–60</span><span><i style="background:#7e22ce"></i>%60+</span></div>
+    <label class="lp-range"><span class="ms">height</span> Yükseklik abartma <input type="range" id="opt-exag" min="1" max="3" step="0.1" value="3"><b id="exag-val">3×</b></label>
     </div>
   </div>
 </div>
@@ -91,13 +90,25 @@
 <div id="drawer-bg" class="drawer-bg" hidden></div>
 <nav id="drawer" class="drawer" hidden aria-label="Menü">
   <div class="drawer-head"><strong>ATLAS<span>3D</span></strong> Haritalar<button class="icon-btn" id="drawer-close" aria-label="Kapat"><span class="ms">close</span></button></div>
+  <button class="drawer-veh" id="drawer-veh" data-act="vehicles"></button>
+  <div class="drawer-title">Yolculuk</div>
+  <button class="drawer-item" data-act="vehicles"><span class="ms">directions_car</span>Araçlarım<span class="di-s" id="di-veh-count"></span></button>
+  <button class="drawer-item" data-act="trips"><span class="ms">receipt_long</span>Yolculuk geçmişi<span class="di-s" id="di-trips"></span></button>
+  <button class="drawer-item" data-act="prices"><span class="ms">local_gas_station</span>Akaryakıt fiyatları<span class="di-s" id="di-price"></span></button>
+  <div class="drawer-sep"></div>
+  <div class="drawer-title">Yerler</div>
+  <button class="drawer-item" data-act="places"><span class="ms">home</span>Ev ve iş<span class="di-s" id="di-places"></span></button>
   <button class="drawer-item" data-act="saved"><span class="ms">bookmark</span>Kaydedilenler</button>
   <button class="drawer-item" data-act="recent"><span class="ms">history</span>Son aramalar</button>
-  <button class="drawer-item" data-act="measure"><span class="ms">straighten</span>Mesafe ölç</button>
-  <button class="drawer-item" data-act="share"><span class="ms">share</span>Haritayı paylaş</button>
-  <button class="drawer-item" data-act="mylocation"><span class="ms">my_location</span>Konumum</button>
-  <button class="drawer-item" data-act="install" id="install-item" hidden><span class="ms">install_mobile</span>Uygulamayı yükle</button>
+  <button class="drawer-item" data-act="stations"><span class="ms" id="di-st-icon">local_gas_station</span><span id="di-st-label">Yakındaki benzinlikler</span></button>
   <div class="drawer-sep"></div>
+  <div class="drawer-title">Araçlar</div>
+  <button class="drawer-item" data-act="measure"><span class="ms">straighten</span>Mesafe ve arazi kesiti</button>
+  <button class="drawer-item" data-act="range" id="di-range" hidden><span class="ms">timelapse</span>Ulaşılabilir alan</button>
+  <button class="drawer-item" data-act="mylocation"><span class="ms">my_location</span>Konumum</button>
+  <button class="drawer-item" data-act="share"><span class="ms">share</span>Haritayı paylaş</button>
+  <div class="drawer-sep"></div>
+  <button class="drawer-item" data-act="install" id="install-item" hidden><span class="ms">install_mobile</span>Uygulamayı yükle</button>
   <button class="drawer-item" data-act="about"><span class="ms">info</span>Veri kaynakları</button>
 </nav>
 

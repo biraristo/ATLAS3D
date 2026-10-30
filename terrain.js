@@ -67,7 +67,9 @@ function ensureContours() {
 }
 
 /* ================= Arazi seçenekleri ================= */
-opts.slope ??= false; opts.contours ??= true; opts.exag ??= EXAG;
+// Eğim haritası ve eş yükselti eğrileri ATLAS3D'nin standart görünümüdür: her zaman açık, seçim sorulmaz.
+// Yükseklik abartma her açılışta 3× başlar (oturum içinde kaydırıcıyla değiştirilebilir).
+opts.slope = true; opts.contours = true; opts.exag = 3;
 function applyTerrainOpts() {
   if (!map?.getLayer('a3-sat')) return;
   if (opts.slope) ensureSlopeLayer();
@@ -75,21 +77,15 @@ function applyTerrainOpts() {
   if (opts.contours) ensureContours().then(() => { ['a3-contour-line', 'a3-contour-label'].forEach(id => map.setLayoutProperty(id, 'visibility', opts.contours ? 'visible' : 'none')); }).catch(() => {});
   else ['a3-contour-line', 'a3-contour-label'].forEach(id => map.getLayer(id) && map.setLayoutProperty(id, 'visibility', 'none'));
   if (opts.terrain) map.setTerrain({ source: 'dem', exaggeration: opts.exag });
-  $('slope-legend').hidden = !opts.slope;
 }
-$('opt-slope').checked = opts.slope; $('opt-contours').checked = opts.contours; $('opt-exag').value = opts.exag; $('exag-val').textContent = nf1.format(opts.exag) + '×';
-$('opt-slope').onchange = e => { opts.slope = e.target.checked; store.set('opts', opts); applyTerrainOpts(); };
-$('opt-contours').onchange = e => { opts.contours = e.target.checked; store.set('opts', opts); applyTerrainOpts(); };
+$('opt-exag').value = opts.exag; $('exag-val').textContent = nf1.format(opts.exag) + '×';
 $('opt-exag').oninput = e => {
-  opts.exag = +e.target.value; $('exag-val').textContent = nf1.format(opts.exag) + '×'; store.set('opts', opts);
+  opts.exag = +e.target.value; $('exag-val').textContent = nf1.format(opts.exag) + '×';
   if (!opts.terrain) { opts.terrain = true; $('opt-terrain').checked = true; }
   map.setTerrain({ source: 'dem', exaggeration: opts.exag });
 };
 // 3D arazi anahtarı abartma değerini kullansın
 $('opt-terrain').onchange = e => { opts.terrain = e.target.checked; store.set('opts', opts); map.setTerrain(opts.terrain ? { source: 'dem', exaggeration: opts.exag } : null); };
-// "Arazi" altlığı seçilince eş yükselti eğrileri otomatik açılır
-const _setBasemap = setBasemap;
-setBasemap = id => { _setBasemap(id); if (id === 'terrain' && !opts.contours) { opts.contours = true; $('opt-contours').checked = true; store.set('opts', opts); applyTerrainOpts(); } };
 (function waitMap() { if (map?.getLayer?.('a3-sat')) applyTerrainOpts(); else setTimeout(waitMap, 300); })();
 
 /* ================= Rotanın 3D önizlemesi ================= */

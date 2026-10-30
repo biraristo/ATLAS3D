@@ -144,6 +144,8 @@ a.info-row:hover,.info-row.copy:hover{background:var(--hover);cursor:pointer}
 .layers-btn:hover,.layers-btn.on{background:#f1f3f4}
 .layers-pop{position:absolute;left:0;top:48px;background:var(--bg);border-radius:12px;box-shadow:var(--shadow);padding:12px 14px;width:290px}
 .lp-title{font-size:12px;color:var(--muted);font-weight:500;margin:4px 0 8px}
+.lp-note{margin:0 0 8px;font-size:12.5px;color:#3c4043;line-height:1.4}
+.layers-pop .slope-legend{padding-left:0;margin-bottom:6px}
 .lp-row{display:flex;gap:10px;margin-bottom:10px}
 .bm{flex:1;background:none;border:0;padding:0;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;color:var(--muted)}
 .bm .t{width:100%;height:54px;border-radius:8px;border:2px solid transparent;background-size:cover;background-position:center}
@@ -603,3 +605,81 @@ body.navigating.fuel-on .map-ctrls{bottom:calc(205px + var(--safe-b))}
 .ns-grid small{color:var(--muted);font-size:11.5px}
 .ns-grid b{font-size:15px;font-weight:500;font-variant-numeric:tabular-nums}
 .ns-note{margin:10px 0 0;font-size:12px;color:var(--muted);line-height:1.45}
+
+/* ================= Menü: aktif araç ve bölümler ================= */
+.drawer-veh{display:flex;align-items:center;gap:12px;width:calc(100% - 32px);margin:4px 16px 8px;padding:12px 10px 12px 14px;border:1px solid var(--line);border-radius:14px;background:#f8fafd;cursor:pointer;font:inherit;text-align:left;color:var(--text)}
+.drawer-veh:hover{background:var(--blue-bg)}
+.drawer-veh>.ms{color:var(--blue-d);font-size:26px}
+.dv-m{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.3}
+.dv-m b{font-size:15px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dv-m small{color:var(--muted);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dv-p{display:flex;flex-direction:column;align-items:flex-end;line-height:1.25;font-variant-numeric:tabular-nums}
+.dv-p small{color:var(--muted);font-size:11px}.dv-p b{font-size:14px;font-weight:600}
+.drawer-veh .dv-c{color:var(--muted);font-size:20px;margin-left:-4px}
+.drawer-title{padding:10px 24px 2px;font-size:12px;font-weight:500;color:var(--muted)}
+.di-s{margin-left:auto;color:var(--muted);font-size:12.5px;font-variant-numeric:tabular-nums}
+.drawer-item{padding:11px 24px}
+
+/* ================= Araçlarım ================= */
+.btn.sm{height:32px;padding:0 12px 0 10px;font-size:13px}
+.btn.sm .ms{font-size:18px}
+.gv-list{padding:8px 16px 0}
+.gv{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--line);border-radius:14px;margin-bottom:10px;cursor:pointer;background:var(--bg)}
+.gv.on{border-color:var(--blue);background:#f8fafd}
+.gv-i{color:var(--blue-d);font-size:26px}
+.gv-m{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.gv-m>b{font-size:15px;font-weight:500;display:flex;align-items:center;gap:8px}
+.gv-m em{font-style:normal;font-size:11px;font-weight:500;color:#174ea6;background:#e8f0fe;border-radius:6px;padding:0 6px;line-height:18px}
+.gv-m small{color:var(--muted);font-size:12px}
+.gv-m small b{color:var(--text);font-weight:500}
+.gv-a{display:flex;align-items:center;gap:2px}
+.gv-add{padding:6px 16px 4px;display:flex;gap:8px}
+.ve-form{padding:14px 24px}
+.ve-form>.vf-f{margin-bottom:12px}
+.ve-form .vf-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.ve-acts{display:flex;align-items:center;gap:8px;margin-top:16px}
+.ve-del{margin-left:auto;color:var(--red)}
+
+/* ================= Yolculuk geçmişi ================= */
+.tr-sum{margin:12px 16px 4px;padding:12px 14px;border-radius:14px;background:#f8fafd;border:1px solid var(--line)}
+.ts-h{font-size:13px;font-weight:500;color:#3c4043;margin-bottom:6px;text-transform:capitalize}
+.ts-g{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.ts-g span{display:flex;flex-direction:column}
+.ts-g small{color:var(--muted);font-size:11px}
+.ts-g b{font-size:15px;font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tr-list{padding:4px 0}
+.tr-it{display:flex;align-items:center;gap:14px;padding:10px 24px;border-bottom:1px solid #f1f3f4}
+.tr-it>.ms{color:var(--muted)}
+.tr-m{flex:1;min-width:0;display:flex;flex-direction:column}
+.tr-m b{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr-m small{color:var(--muted);font-size:12px}
+.tr-p{font-weight:600;font-variant-numeric:tabular-nums}
+
+/* ================= Akaryakıt fiyatları ================= */
+.pr-list{padding:6px 0}
+.pr-it{display:flex;align-items:center;gap:14px;padding:12px 24px;border-bottom:1px solid #f1f3f4}
+.pr-it>.ms{color:var(--muted)}
+.pr-it.on{background:#f8fafd}.pr-it.on>.ms{color:var(--blue-d)}
+.pr-m{flex:1;min-width:0;display:flex;flex-direction:column}
+.pr-m b{font-weight:500}.pr-m small{color:var(--muted);font-size:12px}
+.pr-p{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pr-p small{font-size:12px;font-weight:400;color:var(--muted)}
+.pr-card{display:flex;gap:12px;align-items:center;margin:12px 16px 4px;padding:12px 14px;border-radius:14px;background:#e8f0fe}
+.pr-card>.ms{color:var(--blue-d);font-size:26px}
+.pr-card div{display:flex;flex-direction:column}
+.pr-card b{font-weight:500}.pr-card small{color:#3c4043;font-size:12px}
+
+/* ================= Ev ve iş ================= */
+.mp-row{display:flex;align-items:center;gap:12px;padding:14px 24px;border-bottom:1px solid #f1f3f4}
+.mp-i{color:var(--blue-d);font-size:24px}
+.mp-m{flex:1;min-width:0;display:flex;flex-direction:column}
+.mp-m b{font-weight:500}.mp-m small{color:var(--muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mp-edit{padding:4px 24px 12px;border-bottom:1px solid #f1f3f4}
+.mp-edit .dir-in{position:relative}
+.mp-edit input{width:100%;box-sizing:border-box;height:40px;border:1px solid var(--line);border-radius:8px;padding:0 12px;font:inherit;font-size:15px;outline:none}
+.mp-edit input:focus{border-color:var(--blue)}
+.mp-acts{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.mp-acts .ms{font-size:18px;vertical-align:-4px;margin-right:4px}
+
+/* Kamera: ufuk modu */
+.ctrl.tilt.hz{font-size:11.5px}

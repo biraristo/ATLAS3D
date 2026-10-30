@@ -161,12 +161,30 @@ const savedView = initialView();
 buildStyle().then(style => {
   map = new maplibregl.Map({
     container: 'map', style, hash: true, ...(savedView || (location.hash ? TR_VIEW : { ...TR_VIEW, pitch: PITCH_3D })),
-    maxPitch: 80, pixelRatio: Math.min(devicePixelRatio || 1, 3), fadeDuration: 120,
+    maxPitch: 80, pixelRatio: Math.min(devicePixelRatio || 1, 2), fadeDuration: 120,
     attributionControl: { compact: true }, cancelPendingTileRequestsWhileZooming: true
   });
   map.addControl(new maplibregl.ScaleControl({ unit: 'metric', maxWidth: 90 }), 'bottom-right');
   map.on('load', onMapLoad);
   map.on('error', e => console.warn('Harita:', e.error?.message || e));
+  // iPhone Safari bellek baskısında WebGL çizim alanını sessizce küçültebiliyor: harita ekranın yalnız bir kısmına çizilir,
+  // gerisi boş kalır. Çizim alanı tuvalden küçükse çözünürlük kademeli düşürülür ve harita yeniden boyutlandırılır.
+  const guardCanvas = () => {
+    try {
+      const gl = map.painter?.context?.gl; if (!gl || gl.isContextLost()) return;
+      if (gl.drawingBufferHeight < gl.canvas.height - 2 || gl.drawingBufferWidth < gl.canvas.width - 2) {
+        const pr = map.getPixelRatio(); if (pr <= 1) return;
+        map.setPixelRatio(Math.max(1, pr - 0.5)); map.resize(); map.triggerRepaint();
+        console.warn('Harita: çizim alanı küçüldü, çözünürlük', map.getPixelRatio());
+      }
+    } catch {}
+  };
+  map.on('load', guardCanvas); map.on('resize', guardCanvas); map.on('idle', guardCanvas);
+  // WebGL bağlamı kaybolursa (arka plandan dönüş, bellek): MapLibre geri yüklenince yeniden çizer; bir süre gelmezse sayfayı yeniler
+  map.getCanvas().addEventListener('webglcontextlost', () => { clearTimeout(guardCanvas._t); guardCanvas._t = setTimeout(() => { if (map.painter?.context?.gl?.isContextLost()) location.reload(); }, 8000); });
+  map.getCanvas().addEventListener('webglcontextrestored', () => { clearTimeout(guardCanvas._t); map.resize(); map.triggerRepaint(); });
+  addEventListener('pageshow', () => { map.resize(); map.triggerRepaint(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { map.resize(); map.triggerRepaint(); } });
   // OpenFreeMap sprite'ında olmayan birkaç POI simgesi (atm, office, gate…): boş görsel ver, uyarı ve yeniden deneme olmasın
   map.on('styleimagemissing', e => { if (!map.hasImage(e.id)) map.addImage(e.id, { width: 1, height: 1, data: new Uint8Array(4) }); });
   wireMap();

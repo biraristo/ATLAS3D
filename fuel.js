@@ -130,6 +130,7 @@ function routeCost(r) {
 }
 
 /* ----- Biçimlendirme ----- */
+const nf2 = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtQty = (q, u) => (q < 10 ? nf1 : nf0).format(q) + ' ' + u;
 const vehSummary = () => `${BODIES[VEH.body].label} · ${FUELS[VEH.fuel].label} · ${nf1.format(vehAvg())} ${FUELS[VEH.fuel].unit}/100 km${VEH.pax > 1 ? ` · ${VEH.pax} kişi` : ''}`;
 const SHARE_INFO = [['aero', 'Hava direnci', '#4285f4'], ['roll', 'Yuvarlanma', '#34a853'], ['grade', 'Yokuşlar', '#ea4335'], ['accel', 'Hızlanma', '#fbbc04'], ['idle', 'Rölanti ve sistemler', '#9aa0a6']];
@@ -242,18 +243,22 @@ function renderLiveFuel(r, along, kmh) {
   const t = performance.now(); if (t - liveDomAt < 900) return; liveDomAt = t;
   const u = FUELS[VEH.fuel].unit, price = unitPrice().v, v = LIVE.v || 0;
   let now, unitTxt, col;
-  if (v < 2) { now = Math.max(0, LIVE.rate * 3600); unitTxt = `${u}/sa`; col = '#9aa0a6'; }
+  const stopped = v < 2;
+  if (stopped) { now = Math.max(0, LIVE.rate * 3600); unitTxt = `${u}/sa`; col = '#9aa0a6'; }
   else {
     now = LIVE.rate / v * 1e5; unitTxt = `${u}/100`;
     const ref = vehAvg(); col = now <= ref * 1.05 ? '#188038' : now <= ref * 1.5 ? '#e37400' : '#d93025';
   }
   const used = Math.max(0, LIVE.qty), spent = used * price, tolls = liveTolls();
   const hint = liveHint(r, along, kmh);
-  const nowTxt = v >= 2 && LIVE.rate <= 0 ? (FUELS[VEH.fuel].regen ? 'Şarj ediyor' : 'Yakıt kesik') : `${(now < 10 ? nf1 : nf0).format(now)}`;
+  // Dururken L/100 km anlamsız: "Duruyor" yazılır, altında rölanti tüketimi (saatlik) küçük gösterilir
+  const coasting = !stopped && LIVE.rate <= 0;
+  const nowTxt = stopped ? 'Duruyor' : coasting ? (FUELS[VEH.fuel].regen ? 'Şarj ediyor' : 'Yakıt kesik') : `${(now < 10 ? nf1 : nf0).format(now)}`;
+  const nowSub = stopped ? (FUELS[VEH.fuel].regen ? '' : `rölanti ${nf1.format(now)} ${unitTxt}`) : coasting ? '' : unitTxt;
   el.hidden = false;
   el.innerHTML = `<div class="nf-main">
-      <span class="nf-now"><i style="background:${col}"></i><b>${nowTxt}</b>${v >= 2 && LIVE.rate <= 0 ? '' : `<small>${unitTxt}</small>`}</span>
-      <span class="nf-k"><small>Yakıt</small><b>${fmtQty(used, u)}</b></span>
+      <span class="nf-now ${stopped || coasting ? 'txt' : ''}"><i style="background:${col}"></i><b>${nowTxt}</b>${nowSub ? `<small>${nowSub}</small>` : ''}</span>
+      <span class="nf-k"><small>Yakıt</small><b>${(used < 1 ? nf2 : used < 10 ? nf1 : nf0).format(used)} ${u}</b></span>
       <span class="nf-k"><small>Yakıt ücreti</small><b>${fmtTL(spent)}</b></span>
       <span class="nf-k tot" title="Yakıt ücreti + geçilen köprü/otoyol ücretleri"><small>Toplam</small><b>${fmtTL(spent + tolls)}</b></span>
     </div>${hint ? `<div class="nf-hint">${hint}</div>` : ''}`;

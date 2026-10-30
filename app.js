@@ -976,7 +976,12 @@ document.addEventListener('pointerdown', e => { if (!$('ctx').hidden && !$('ctx'
 
 /* ----- Kontroller ----- */
 function updateCompass() { $('compass-icon').style.transform = `rotate(${-map.getBearing()}deg)`; }
-function updateTilt() { $('tilt').textContent = map.getPitch() > 10 ? '2D' : '3D'; }
+// Düğme o anki görünümü gösterir: eğik görünümde mavi "3D" (seçili), düz görünümde "2D"; dokununca diğerine geçer
+function updateTilt() {
+  const is3d = map.getPitch() > 10, b = $('tilt');
+  b.textContent = is3d ? '3D' : '2D'; b.classList.toggle('on', is3d); b.setAttribute('aria-pressed', is3d);
+  b.title = is3d ? '3D görünüm açık · 2D için dokunun' : '2D görünüm · 3D için dokunun';
+}
 $('compass').onclick = () => map?.easeTo({ bearing: 0, duration: 500 });
 $('zoom-in').onclick = () => map?.zoomIn();
 $('zoom-out').onclick = () => map?.zoomOut();

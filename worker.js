@@ -138,8 +138,9 @@ async function mapboxDem(url, env, ctx) {
   const m = url.pathname.match(/^\/api\/dem\/(\d{1,2})\/(\d+)\/(\d+)\.png$/);
   if (!m || +m[1] > 15) return new Response(null, { status: 404 });
   const cacheKey = new Request(`https://atlas3d.cache/dem/${m[1]}/${m[2]}/${m[3]}`);
-  const hit = await caches.default.match(cacheKey); if (hit) return hit;
-  const r = await fetch(`https://api.mapbox.com/v4/mapbox.mapbox-terrain-dem-v1/${m[1]}/${m[2]}/${m[3]}.pngraw?access_token=${env.MAPBOX_TOKEN}`);
+  const hit = url.searchParams.get('v') ? null : await caches.default.match(cacheKey); if (hit) return hit;
+  const V = { a: 'mapbox.mapbox-terrain-dem-v1/{p}.pngraw', b: 'mapbox.terrain-rgb/{p}.pngraw', c: 'mapbox.mapbox-terrain-dem-v1/{p}@2x.pngraw', d: 'mapbox.mapbox-terrain-dem-v1/{p}.webp' }[url.searchParams.get('v') || 'a'] || 'mapbox.mapbox-terrain-dem-v1/{p}.pngraw';
+  const r = await fetch(`https://api.mapbox.com/v4/${V.replace('{p}', `${m[1]}/${m[2]}/${m[3]}`)}?access_token=${env.MAPBOX_TOKEN}`, { headers: { 'User-Agent': 'ATLAS3D/2.0', 'Referer': url.origin + '/' } });
   if (!r.ok) return new Response(null, { status: r.status === 404 ? 404 : 502, headers: { 'x-upstream': r.status + ' ' + (await r.text()).slice(0, 200).replace(env.MAPBOX_TOKEN, '***').replace(/[^\x20-\x7e]/g, ' ') } });
   const res = new Response(r.body, { headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=2592000', 'access-control-allow-origin': '*' } });
   ctx.waitUntil(caches.default.put(cacheKey, res.clone()));

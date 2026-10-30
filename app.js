@@ -166,6 +166,11 @@ buildStyle().then(style => {
 });
 
 function onMapLoad() {
+  // Üst üste binen kamera animasyonları arazi yüksekliğini dondurabiliyor (MapLibre); hareket bitince çöz
+  const unfreeze = () => { if (map.terrain && map._elevationFreeze && !map.isMoving()) { map._elevationFreeze = false; map.once('render', refreshMarkers); map.triggerRepaint(); } };
+  map.on('moveend', unfreeze); map.on('idle', unfreeze);
+  // Telif bilgisi mobilde kapalı (i) düğmesiyle başlasın
+  map.getContainer().querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show');
   applyBasemap();
   addOwnSourcesAndLayers();
   handleUrlParams();
@@ -460,6 +465,8 @@ function setPlaceMarker(lngLat) {
   if (!placeMarker) placeMarker = new maplibregl.Marker({ element: makeEl(PIN_SVG('#ea4335')), anchor: 'bottom' });
   placeMarker.setLngLat(lngLat).addTo(map);
 }
+// Kamera yüksekliği düzeltildikten sonra DOM işaretçilerini yeniden konumlandır
+function refreshMarkers() { [meMarker, placeMarker, startMarker, endMarker, profMarker, ...resultMarkers, ...measureMarkers].forEach(m => { if (m?._map) m.setLngLat(m.getLngLat()); }); }
 function clearPlaceMarker() { placeMarker?.remove(); }
 function clearResultMarkers() { resultMarkers.forEach(m => m.remove()); resultMarkers = []; }
 
@@ -950,11 +957,11 @@ function ensureMe() {
 }
 function updateMeMarker() {
   if (!meLngLat || !map) return;
-  if (!meMarker) meMarker = new maplibregl.Marker({ element: makeEl('<div class="me-dot"></div>'), rotationAlignment: 'map', pitchAlignment: 'map' }).setLngLat(meLngLat).addTo(map);
+  if (!meMarker) meMarker = new maplibregl.Marker({ element: makeEl('<div class="me-dot"></div>'), rotationAlignment: 'map', pitchAlignment: 'viewport', opacityWhenCovered: '1' }).setLngLat(meLngLat).addTo(map);
   meMarker.setLngLat(meLngLat);
   const elm = meMarker.getElement();
   if (navActive) {
-    if (!elm.classList.contains('nav')) { elm.classList.add('nav'); elm.innerHTML = '<svg viewBox="0 0 26 26" width="26" height="26"><circle cx="13" cy="13" r="12" fill="#fff"/><path d="M13 3l7 18-7-4-7 4z" fill="#1a73e8"/></svg>'; }
+    if (!elm.classList.contains('nav')) { elm.classList.add('nav'); elm.innerHTML = '<svg viewBox="0 0 26 26" width="38" height="38"><circle cx="13" cy="13" r="12" fill="#fff" stroke="rgba(0,0,0,.15)"/><path d="M13 3.5l7 17.5-7-4-7 4z" fill="#1a73e8"/></svg>'; }
     meMarker.setRotation(navBearing ?? 0);
   } else if (elm.classList.contains('nav')) { elm.classList.remove('nav'); elm.innerHTML = ''; meMarker.setRotation(0); }
 }
@@ -1182,7 +1189,7 @@ async function startNav() {
     refreshDirResults();
   }
   navRoute = dir.routes[dir.sel]; navActive = true; navAnnounced = new Set(); navOff = 0; navFollow = true; navLastIdx = 0;
-  body.classList.add('navigating'); hideCtx();
+  body.classList.add('navigating'); hideCtx(); document.documentElement.style.setProperty('--sheet-h', '0px');
   $('nav-top').hidden = false; $('nav-bottom').hidden = false;
   $('nav-mute-icon').textContent = navMuted ? 'volume_off' : 'volume_up';
   try { wakeLock = await navigator.wakeLock?.request('screen'); } catch {}
@@ -1194,7 +1201,7 @@ function stopNav() {
   body.classList.remove('navigating');
   ['nav-top', 'nav-bottom', 'nav-next', 'nav-terrain'].forEach(id => { $(id).hidden = true; });
   try { wakeLock?.release(); } catch {} wakeLock = null;
-  window.speechSynthesis?.cancel(); updateMeMarker(); fitRoute();
+  window.speechSynthesis?.cancel(); updateMeMarker(); setSheet(sheetState); fitRoute();
 }
 $('nav-exit').onclick = stopNav;
 $('nav-recenter').onclick = () => { navFollow = true; navTick(true); };
@@ -1276,7 +1283,8 @@ async function navTick(force) {
   updateMeMarker();
   if (navFollow) map.easeTo({ center: s.off < 30 ? s.pos : meLngLat, bearing: navBearing, pitch: 62,
     zoom: dir.mode === 'car' ? ((meSpeed ?? 0) > 20 ? 16.3 : 17.2) : 18,
-    padding: { top: innerHeight * 0.4, bottom: 90, left: 20, right: 20 }, duration: force === true ? 1000 : 900, easing: t => t });
+    padding: { top: innerHeight * 0.4, bottom: 90, left: 20, right: 20 }, duration: force === true ? 900 : 750, easing: t => t });
+  if (force === true) setTimeout(() => { if (map._elevationFreeze && !map.isMoving()) { map._elevationFreeze = false; map.once('render', refreshMarkers); map.triggerRepaint(); } }, 1200);
 }
 
 /* ================= Arazi göstergesi (merkez / imleç) ================= */

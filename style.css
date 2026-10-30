@@ -577,14 +577,17 @@ button.hud{font:inherit;color:inherit;text-align:left;border:0;cursor:pointer;po
 
 /* ================= Navigasyon: anlık yakıt ================= */
 .nav-fuel{position:fixed;z-index:29;left:10px;right:10px;max-width:520px;margin:0 auto;bottom:calc(80px + var(--safe-b));background:var(--bg);border-radius:12px;box-shadow:var(--shadow);padding:8px 14px;font-variant-numeric:tabular-nums}
-.nf-main{display:flex;align-items:center;gap:16px}
+.nf-main{display:flex;align-items:center;gap:14px}
 .nf-now{display:flex;align-items:baseline;gap:5px;margin-right:auto}
 .nf-now i{width:10px;height:10px;border-radius:50%;align-self:center;flex:none}
 .nf-now b{font-size:22px;font-weight:500}
 .nf-now small{color:var(--muted);font-size:12px}
 .nf-k{display:flex;flex-direction:column;align-items:flex-end;line-height:1.2}
 .nf-k small{color:var(--muted);font-size:11px}
-.nf-k b{font-size:15px;font-weight:500}
+.nf-k b{font-size:15px;font-weight:500;white-space:nowrap}
+.nf-k.tot{padding-left:14px;border-left:1px solid var(--line)}
+.nf-k.tot b{font-size:17px;font-weight:700}
+.nf-k small{white-space:nowrap}
 .nf-hint{margin-top:6px;padding-top:6px;border-top:1px solid #f1f3f4;font-size:12.5px;color:#8a4b00}
 .nf-hint b{font-weight:600}
 body.navigating.fuel-on .map-ctrls{bottom:calc(205px + var(--safe-b))}

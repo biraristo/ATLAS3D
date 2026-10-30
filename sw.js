@@ -1,7 +1,7 @@
 // ATLAS3D service worker: uygulama kabuğu ve harita karoları için önbellek.
 // Kabuk dosyaları "önce ağ" ile gelir (güncellemeler hemen yansır), çevrimdışıyken önbellekten açılır.
 // Harita/arazi karoları "önce önbellek" ile gelir: gezilen bölgeler hızlı ve çevrimdışı da açılır.
-const VERSION = 'v4'; // kabuk dosya listesi değişince artırın: eski önbellekler silinir
+const VERSION = 'v5'; // kabuk dosya listesi değişince artırın: eski önbellekler silinir
 const SHELL = 'atlas3d-shell-' + VERSION;
 const LIBS = 'atlas3d-libs-' + VERSION;
 const TILES = 'atlas3d-tiles-' + VERSION;

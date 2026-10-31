@@ -229,7 +229,7 @@ function vehPhys(v = VEH) {
     P.resid = residual(c); P.coldJ = cold * c.c / 100 * km * mj; P.src = 'cat';
   } else {
     // Katalog dışı: gerçek kullanım ortalamasına (kullanıcının girdiği ya da gövde tipinin tipik değeri) kalibre
-    const avg = v.avg || BODIES[v.body].avg[v.fuel], m = b.m0 + 75;
+    const avg = v.avg || BODIES[v.body].avg[v.fuel], m = b.m0 + 90;
     P.k = (avg / 1e5 * mj) / refEnergyPerM(P, m);
     P.src = v.avg ? 'user' : 'body';
     if (!P.ev) P.coldJ = 0; // ortalama zaten soğuk çalıştırmaları içerir
@@ -254,7 +254,7 @@ function personal(v = VEH) {
 }
 // Gerçek kullanım tahmini (L ya da kWh / 100 km) — kişisel katsayı dahil/hariç
 function refPer100(v = VEH, withPersonal = true) {
-  const P = vehPhys(v), m = P.m0 + 75 * (v.pax || 1) + 15;
+  const P = vehPhys(v), m = P.m0 + 90; // tipik değer: yalnız sürücü (yolcu yükü rotada ayrıca eklenir)
   let e;
   if (P.evPart) e = refEnergyPerM(P, m) * 1e5 / P.unitJ * P.resid; // PHEV: batarya boşken
   else e = (refEnergyPerM(P, m) * 1e5 + P.coldJ * (1 + 0.05 * 5) * 100 / 15) / P.unitJ * P.resid; // ortalama yolculuk ~15 km, 18 °C

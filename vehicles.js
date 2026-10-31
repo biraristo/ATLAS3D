@@ -183,7 +183,7 @@ function editVehicle(v, { pick = true } = {}) {
     const carBox = c ? `<div class="ve-car"><span class="ms">${BODIES[d.body].icon}</span><div><b>${esc(`${c.mk} ${c.md} ${c.y}`)}</b><small>${esc(catEngine(c))} · ${nf0.format(c.m)} kg</small>
         <small>${c.c ? `Resmî ${nf1.format(c.c)} ${fuelUnit(c)}/100 km (${basisLabel(c.b)})` : c.p === 'phev' ? `Batarya ~${nf0.format(c.z && c.er ? c.z * c.er / 1000 : 10)} kWh · elektrikli menzil ~${c.er ? nf0.format(c.er) : '?'} km` : ''}${est ? ` · gerçek kullanımda ≈ <b>${nf1.format(est)} ${u}/100</b>` : ''}</small>${c.eq ? `<small>Hesap ${esc(c.eq)} verisiyle</small>` : ''}</div>
         <button type="button" class="btn outline sm" id="ve-pick">Değiştir</button></div>`
-      : manual ? '' : `<div class="ve-pick"><button type="button" class="btn primary" id="ve-pick"><span class="ms">search</span>Marka, model ve motoru seç</button><button type="button" class="btn outline" id="ve-manual">Elle gir</button></div>`;
+      : manual ? `<div class="ve-pick"><button type="button" class="btn outline" id="ve-pick"><span class="ms">search</span>Katalogdan seç (marka, model, motor)</button></div>` : `<div class="ve-pick"><button type="button" class="btn primary" id="ve-pick"><span class="ms">search</span>Marka, model ve motoru seç</button><button type="button" class="btn outline" id="ve-manual">Elle gir</button></div>`;
     el.innerHTML = `<div class="list-head drag-zone"><h2>${isNew ? 'Araç ekle' : 'Aracı düzenle'}</h2><small>${c ? 'Tüketim bu araca özel hesaplanır' : manual ? 'Katalog dışı araç: tipik değerler ya da kendi ortalamanız' : 'Aracını seç; tüketim, kütle ve motor bilgisi otomatik gelir'}</small></div>
       <div class="ve-form">
         ${carBox}

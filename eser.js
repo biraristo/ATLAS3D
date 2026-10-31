@@ -183,9 +183,8 @@ const eserKisa = n => n >= 1000 ? nf1.format(n / 1000) + ' B' : String(n);
 function eserBarCiz() {
   const bar = $('eser-bar'), s = eser.data.sayi;
   bar.innerHTML = `<button class="eser-chip zaman-chip${typeof zaman !== 'undefined' && zaman.acik ? ' on' : ''}" id="zaman-chip"><span class="ms">history</span>Zaman</button>`
-    + `<button class="eser-chip arac-chip" id="gunluk-chip"><span class="ms">where_to_vote</span>Günlüğüm</button><button class="eser-chip arac-chip" id="yakin-chip"><span class="ms">near_me</span>Yakınımda</button><button class="eser-chip arac-chip" id="kol-chip"><span class="ms">architecture</span>Koleksiyonlar</button>` + ESER_AILE.map((a, i) => `<button class="eser-chip${eser.kapali.has(i) ? ' kapali' : ''}" data-f="${i}" style="--c:${a.renk}" aria-pressed="${!eser.kapali.has(i)}"><i></i>${a.ad}<small>${eserKisa(s[i])}</small></button>`).join('');
+    + `<button class="eser-chip arac-chip" id="kol-chip"><span class="ms">architecture</span>Koleksiyonlar</button><button class="eser-chip arac-chip" id="yakin-chip"><span class="ms">near_me</span>Yakınımda</button>` + ESER_AILE.map((a, i) => `<button class="eser-chip${eser.kapali.has(i) ? ' kapali' : ''}" data-f="${i}" style="--c:${a.renk}" aria-pressed="${!eser.kapali.has(i)}"><i></i>${a.ad}<small>${eserKisa(s[i])}</small></button>`).join('');
   $('zaman-chip').onclick = () => zamanAcKapat();
-  $('gunluk-chip').onclick = () => gunlukPanel();
   $('yakin-chip').onclick = () => yakinPanel();
   $('kol-chip').onclick = () => kolPanel();
   bar.querySelectorAll('[data-f]').forEach(b => {

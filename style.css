@@ -217,6 +217,7 @@ body.navigating .map-ctrls{bottom:calc(96px + var(--safe-b))}
   .seg .bm .ms{font-size:18px}
   .layers-btn{width:36px;padding:0;justify-content:center}
   .layers-btn .lbl{display:none}
+  .gunluk-btn{margin-left:2px}
   .layers{position:static}
   .layers-pop{left:0;top:48px}
   body.sheet-full .mapbar,body.sheet-high .mapbar{visibility:hidden}
@@ -1041,3 +1042,6 @@ body.zaman-acik .eski-bar{bottom:calc(268px + var(--safe-b,0px))}
 @media (min-width:721px){.kol-bar{top:calc(112px + var(--safe-t))}}
 @media (max-width:720px){.kol-bar{top:calc(162px + var(--safe-t))}}
 body.panel-open .kol-bar,body.navigating .kol-bar,body.dir-open .kol-bar{display:none}
+
+.gunluk-btn .ms{font-size:20px;color:#a87412}
+body.navigating .gunluk-btn{display:none}

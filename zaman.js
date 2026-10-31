@@ -3,7 +3,8 @@
 // Seçilen yıl eski haritalardaki tarihî sınırlarla ortaktır (setAtlasYil).
 'use strict';
 
-const zaman = { acik: false, yil: 1500, mod: 'birikimli', tahmin: true, oynat: null };
+const ZAMAN_GENEL = { center: [30, 39], zoom: 3.3, pitch: 32 }; // Avrupa, Anadolu ve Mısır birlikte
+const zaman = { ilk: false, acik: false, yil: 1500, mod: 'birikimli', tahmin: true, oynat: null };
 // Ölçek dört parçalı; başlangıç verideki en eski eserdir (ör. Abourma kaya resimleri, MÖ 300.000):
 // en eski–MÖ 12000 logaritmik %12 · MÖ 12000–3000 (Neolitik, Göbeklitepe) %18 · MÖ 3000–MS 0 %18 · MS 0–2025 %52
 let Z_MIN = -12000;
@@ -142,7 +143,11 @@ function zamanAcKapat(on = !zaman.acik) {
   if (on && !eser.on) return;
   zaman.acik = on;
   document.body.classList.toggle('zaman-acik', on);
-  if (on) { zamanBaslangic(); zaman.yil = zYuvarla(atlasYil); }
+  if (on) {
+    zamanBaslangic(); zaman.yil = zYuvarla(atlasYil);
+    // İlk açılışta genel görünüm: eserlerin yayılışı bir bakışta izlensin (alt panel haritayı kapatmasın)
+    if (!zaman.ilk) { zaman.ilk = true; map.flyTo({ ...ZAMAN_GENEL, bearing: 0, padding: { top: 120, bottom: isMobile() ? 260 : 40, left: isMobile() ? 0 : 440, right: 0 }, duration: 1800, essential: true }); }
+  }
   else zamanOynatDur();
   zamanUygula(); zamanCiz();
   if (typeof eserBarCiz === 'function' && eser.data) eserBarCiz();

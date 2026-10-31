@@ -272,3 +272,10 @@ function yakinPanel() {
   render.mode = 'list';
   openPanel(render, { mode: 'list', sheet: 'peek' });
 }
+
+// Üst çubuktaki Günlüğüm düğmesi: eser katmanı kapalıyken de açılır (veri gerekirse yüklenir)
+$('gunluk-btn').onclick = async e => {
+  e.stopPropagation();
+  if (!eser.data) { toast('Günlük yükleniyor…', 4000); try { await eserYukle(); } catch { toast('Yüklenemedi. Bağlantını kontrol edip yeniden dene.'); return; } }
+  gunlukPanel();
+};

@@ -35,6 +35,7 @@ const ESER_GLYPH = {
 const ESER_KILISE = new Set(['Kilise', 'Katedral', 'Bazilika', 'Manastır', 'Şapel']);
 const ESER_BOS = new Set(['Kayıp', 'Toprak Altında', 'Su Altında']); // içi boş mühür
 const ESER_LAYERS = ['eser-tul', 'eser-hale', 'eser-yogun', 'eser-nokta', 'eser-secim'];
+const ESER_ACILIS = { center: [32, 38.6], zoom: 2.1, pitch: 40 }; // merkez karada (Anadolu): rakım göstergesi deniz dibini okumasın
 const ESER_YOGUN = '#3f979e', ESER_HALE = '#c9dbf6'; // Kültür Envanteri'nin yoğunluk görünümü: firuze leke, açık mavi hare
 
 const eser = { on: false, data: null, loading: null, kapali: new Set(), secili: null, prev: null };
@@ -148,13 +149,14 @@ async function setEser(on) {
     eserGorunur(false); $('eser-bar').hidden = true; eserSecimGoster(null);
     applyBasemap(); // haritanın etiketleri geri gelir
     if (typeof applyTerrainOpts === 'function') applyTerrainOpts();
-    if (eser.prev) map.easeTo({ pitch: eser.prev.pitch, bearing: eser.prev.bearing, duration: 700 });
+    if (eser.prev) map.flyTo({ ...eser.prev, duration: 1800, essential: true }); // açılmadan önceki yere dönülür
     if (panelMode === 'place' && currentPlace?.eser != null) closePanel();
     return;
   }
   if (typeof isoOn !== 'undefined' && isoOn) setIso(false);
-  eser.prev = { pitch: map.getPitch(), bearing: map.getBearing() };
-  map.easeTo({ pitch: 0, bearing: 0, duration: 800 }); // eserler 2D haritada
+  eser.prev = { center: map.getCenter(), zoom: map.getZoom(), pitch: map.getPitch(), bearing: map.getBearing() };
+  // Açılış: Akdeniz havzası küre üzerinde eğik bakışla; eser yoğunluğu ufka doğru uzanır
+  map.flyTo({ center: ESER_ACILIS.center, zoom: ESER_ACILIS.zoom, pitch: ESER_ACILIS.pitch, bearing: 0, padding: { top: 0, bottom: 0, left: 0, right: 0 }, duration: 2400, essential: true });
   for (const id of ['a3-slope', 'a3-contour-line', 'a3-contour-label']) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
   if (!eser.data) {
     $('eser-btn').classList.add('yukleniyor'); toast('Tarihî eserler yükleniyor…', 8000);

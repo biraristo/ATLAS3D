@@ -6,6 +6,7 @@
 'use strict';
 
 const ESER_URL = '/data/heritage/kulturenvanteri.json';
+const HAKKINDA_URL = '/data/heritage/hakkinda.json'; // kişisel gezi notları (tools/build_mymaps.py): eşleşen eserlere metin + yeni eserler
 // Aile sırası veri dosyasındaki "aile" dizisiyle aynıdır
 const ESER_AILE = [
   { id: 'dini', ad: 'Dinî yapılar', renk: '#1f4e96', simge: 'cami', ms: 'mosque' },
@@ -41,7 +42,11 @@ const eser = { on: false, data: null, loading: null, kapali: new Set(), secili: 
 /* ----- Veri ----- */
 function eserYukle() {
   if (eser.loading) return eser.loading;
-  eser.loading = fetch(ESER_URL).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(d => {
+  const hk = fetch(HAKKINDA_URL).then(r => r.ok ? r.json() : null).catch(() => null); // yoksa katman yine çalışır
+  eser.loading = Promise.all([fetch(ESER_URL).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }), hk]).then(([d, H]) => {
+    eser.hakkinda = H?.ke || {};
+    // Kişisel haritadaki yeni eserler aynı satır biçimine eklenir: [14] tür adı, [15] katman (bölge), [16] gezi notu
+    (H?.yeni || []).forEach((y, k) => d.eser.push([`m${k}`, y.ad, y.lon, y.lat, '', [], [], [], 0, 0, [], 0, '', y.aile, y.tur, y.katman, y]));
     const S = d.sozluk, tur = S.tur, durum = S.durum;
     const feats = new Array(d.eser.length);
     const sayi = new Array(ESER_AILE.length).fill(0);
@@ -204,7 +209,7 @@ function eserYer(id) {
 }
 function eserGoster(i) {
   const d = eser.data, S = d.sozluk, e = d.eser[i], a = ESER_AILE[e[13]];
-  const turler = (e[5] || []).map(t => S.tur[t]).filter(Boolean);
+  const turler = e[14] ? [e[14]] : (e[5] || []).map(t => S.tur[t]).filter(Boolean);
   const p = { eser: i, name: e[1], lat: e[3], lon: e[2], cat: turler[0] || a.ad, icon: a.ms };
   hideCtx(); currentPlace = p; eser.secili = i;
   eserSecimGoster([e[2], e[3]]);
@@ -213,11 +218,26 @@ function eserGoster(i) {
   openPanel(render, { mode: 'place' });
   map.easeTo({ center: [e[2], e[3]], zoom: Math.max(map.getZoom(), 14), padding: mapPadding(), duration: 700 });
 }
+// Gezi notu: alanlar (dönem, tarih, müellif, mezar no) ve başlıklı metinler; uzun metin katlanır
+function eserNotHtml(n, eserAd) {
+  const satir = (ic, baslik, deger) => deger ? `<div class="eser-row"><span class="ms">${ic}</span><div><small>${baslik}</small>${esc(deger)}</div></div>` : '';
+  const muellif = n.muellif ? n.muellif + (n.unvan ? ` (${n.unvan})` : '') : '';
+  const metin = (n.metin || []).map(([b, t]) => {
+    const ps = t.split(/\n+/).map(x => x.trim()).filter(Boolean).map(x => `<p>${esc(x).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')}</p>`).join('');
+    const uzun = t.length > 520;
+    return `<h3>${esc(b)}</h3><div class="eser-metin${uzun ? ' kisa' : ''}">${ps}</div>${uzun ? '<button class="text-btn eser-devam">Devamını göster</button>' : ''}`;
+  }).join('');
+  return `<section class="eser-hakkinda">
+    ${n.ad && n.ad !== eserAd ? `<div class="eser-not-ad">${esc(n.ad)}</div>` : ''}
+    <div class="eser-not-alan">${satir('history_edu', 'Dönem', n.donem)}${satir('event', 'Tarih', n.tarih)}${satir('person', 'Müellif', muellif)}${satir('tag', 'Mezar no', n.kv)}</div>
+    ${metin}</section>`;
+}
 function eserKart(el, p, e, a, turler) {
   const S = eser.data.sozluk;
   const kultur = (e[6] || []).map(k => S.kultur[k]).filter(x => x && x !== '?');
   const yuzyil = (e[7] || []).map(k => S.yuzyil[k]).filter(Boolean);
-  const durum = S.durum[e[8]], yer = eserYer(e[11]);
+  const durum = S.durum[e[8]], yer = e[15] ? `${e[15]}, Mısır` : eserYer(e[11]);
+  const notlar = e[16] ? [e[16]] : eser.hakkinda[e[0]] || [];
   const glyph = `<svg viewBox="0 0 24 24" width="46" height="46" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="${ESER_GLYPH[ESER_KILISE.has(turler[0]) && a.id === 'dini' ? 'kilise' : a.simge]}"/></svg>`;
   const satir = (ic, baslik, deger) => deger ? `<div class="eser-row"><span class="ms">${ic}</span><div><small>${baslik}</small>${esc(deger)}</div></div>` : '';
   el.innerHTML = `
@@ -235,9 +255,11 @@ function eserKart(el, p, e, a, turler) {
     </div>
     <div class="info">
       ${satir('history_edu', 'Kültür', kultur.join(', '))}
-      ${satir('schedule', 'Dönem', yuzyil.join(', '))}
+      ${satir('schedule', 'Yüzyıl', yuzyil.join(', '))}
       ${satir('location_on', 'Konum', yer)}
-    </div>`;
+    </div>
+    ${notlar.map(n => eserNotHtml(n, e[1])).join('')}`;
+  el.querySelectorAll('.eser-devam').forEach(b => { b.onclick = () => { const m = b.previousElementSibling; const ac = m.classList.toggle('kisa'); b.textContent = ac ? 'Devamını göster' : 'Daha az göster'; }; });
   $('es-dir').onclick = () => openDirections({ to: p });
   $('es-start').onclick = () => openDirections({ to: p, autostart: true });
   $('es-save').onclick = () => { toggleSave(p); eserKart(el, p, e, a, turler); };

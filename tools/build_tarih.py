@@ -10,7 +10,7 @@ yüzlerce eser aynı yılda birden belirmez, genel yayılım gerçeğe yakın ka
 
 Çıktı data/heritage/tarih.json:
   { "aralik": [[bas, son, "ad"], ...],
-    "ke":  [[yil, kesinlik, aralik_no], ... ]   # kulturenvanteri.json "eser" sırasıyla; tarihsizse null
+    "ke":  [[yil, kesinlik, aralik_no, (1: yıl kesin)], ... ]   # kulturenvanteri.json "eser" sırasıyla; tarihsizse null
     "m":   [[yil, kesinlik, aralik_no], ... ] } # hakkinda.json "yeni" sırasıyla
 Kullanım: python3 tools/build_tarih.py
 """
@@ -152,9 +152,12 @@ def not_tarih(anahtar, n):
     return None
 
 
+KESIN = json.load(open("data/heritage/kesin_yil.json", encoding="utf-8")) if os.path.exists("data/heritage/kesin_yil.json") else {}
 ke = []
 for e in D["eser"]:
     t = ke_tarih(e)
+    if str(e[0]) in KESIN:  # tools/build_kesin_yil.py: kesin yapım yılı (4. alan 1 = yılı kesin)
+        y = KESIN[str(e[0])]; ke.append([y, 0, aralik(y, y, str(y)), 1]); continue
     # kişisel not daha kesin tarih veriyorsa onu kullan
     for n in H["ke"].get(str(e[0]), []):
         nt = not_tarih(e[0], n)

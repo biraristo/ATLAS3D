@@ -1045,3 +1045,10 @@ body.panel-open .kol-bar,body.navigating .kol-bar,body.dir-open .kol-bar{display
 
 .gunluk-btn .ms{font-size:20px;color:#a87412}
 body.navigating .gunluk-btn{display:none}
+
+.kol-oynat{width:40px;height:40px;flex:none;border:0;border-radius:50%;background:#a8561a;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.kol-oynat.on{background:#7a2418}.kol-oynat .ms{font-size:24px}
+.kol-bar small .kol-yil{font-family:Alegreya,Georgia,serif;font-size:15px;font-weight:500;color:var(--text);margin-right:2px}
+.kol-bar small em{font-style:normal;color:#a8561a}
+.kol-bar small{max-width:52vw;overflow:hidden;text-overflow:ellipsis}
+.kol-oynat-im{font-size:16px;color:#a8561a;vertical-align:-3px;margin-right:2px}

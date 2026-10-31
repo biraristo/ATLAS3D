@@ -63,7 +63,7 @@ function eserYukle() {
         properties: { i, n: e[1], img: `eser-${kilise ? 'kilise' : e[13]}${bos ? '-b' : ''}`, f: e[13] } };
       // y: yapım yılı (aralıklıysa aralık içinde sabit nokta), k: kesinlik 0 kesin / 1 dönem / 2 tahmin; tarihsizde ikisi de yok
       const t = T && (i < keSay ? T.ke[i] : T.m[i - keSay]);
-      if (t) { feats[i].properties.y = t[0]; feats[i].properties.k = t[1]; }
+      if (t) { feats[i].properties.y = t[0]; feats[i].properties.k = t[1]; if (t[3]) feats[i].properties.x = 1; } // x: yapım yılı kesin
     });
     eser.data = { ...d, feats, sayi, tarih: T, keSay };
     return eser.data;

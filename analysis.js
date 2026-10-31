@@ -85,11 +85,14 @@ function analyzeProfile(pr, mode) {
 /* ================= Ekran durumu ================= */
 const AN = { open: false, r: null, pr: null, a: null, d0: 0, d1: 0, cursor: null, along: null, nav: false, showAllC: false, showAllD: false };
 
-function openAnalysis(r, along = null) {
+// kayit: kayıtlı yolculuk ({ ad, alt, mod, sure, hareket, ort, maks, bas, son }); verilirse yol tarifine bağlı bölümler gizlenir
+function openAnalysis(r, along = null, kayit = null) {
   if (!r?.profile) { toast('Yükseklik profili henüz hazır değil'); return; }
-  Object.assign(AN, { open: true, r, pr: r.profile, a: analyzeProfile(r.profile, dir.mode), d0: 0, d1: r.profile.len, cursor: null, along: navActive ? along : null, nav: navActive, showAllC: false, showAllD: false });
+  const mode = kayit?.mod || dir.mode;
+  Object.assign(AN, { open: true, r, pr: r.profile, a: analyzeProfile(r.profile, mode), mode, kayit, d0: 0, d1: r.profile.len, cursor: null, along: !kayit && navActive ? along : null, nav: !kayit && navActive, showAllC: false, showAllD: false });
   AN.prevFocus = document.activeElement;
-  $('an-sub').textContent = `${dir.from?.name || 'Başlangıç'} → ${dir.to?.name || 'Hedef'} · ${MODES[dir.mode].label}`;
+  $('an-title').textContent = kayit ? 'Yolculuk analizi' : 'Rota analizi';
+  $('an-sub').textContent = kayit ? kayit.alt : `${dir.from?.name || 'Başlangıç'} → ${dir.to?.name || 'Hedef'} · ${MODES[dir.mode].label}`;
   $('analysis').hidden = false; body.classList.add('an-open');
   renderAnalysis(); // görünür olduktan sonra çiz: grafik genişliği doğru ölçülsün
   $('an-body').scrollTop = 0;
@@ -140,13 +143,19 @@ function renderAnalysis() {
   const net = pr.elevs[pr.elevs.length - 1] - pr.elevs[0];
   const tiles = [
     ['straighten', 'Mesafe', km(pr.len), ''],
-    ['schedule', 'Süre', fmtDur(r.duration), pr.tAdj ? 'eğime göre ~' + fmtDur(pr.tAdj) : 'trafiksiz'],
+    AN.kayit ? ['schedule', 'Süre', fmtDur(AN.kayit.sure), 'hareket ' + fmtDur(AN.kayit.hareket)] : ['schedule', 'Süre', fmtDur(r.duration), pr.tAdj ? 'eğime göre ~' + fmtDur(pr.tAdj) : 'trafiksiz'],
     ['arrow_upward', 'Tırmanış', mm(pr.ascent), '', '#dc2626'],
     ['arrow_downward', 'İniş', mm(pr.descent), '', '#2563eb'],
     ['landscape', 'En yüksek', mm(pr.max), atKm(a.iHi * pr.step) + "'de"],
     ['water', 'En alçak', mm(pr.min), atKm(a.iLo * pr.step) + "'de"],
     [net > 0 ? 'trending_up' : net < 0 ? 'trending_down' : 'trending_flat', 'Net fark', (net > 0 ? '+' : net < 0 ? '−' : '') + mm(Math.abs(net)), 'varış − başlangıç'],
-    ['terrain', 'Yolun karakteri', a.character, nf0.format(Math.round(a.rough)) + ' m/km iniş-çıkış']
+    ['terrain', 'Yolun karakteri', a.character, nf0.format(Math.round(a.rough)) + ' m/km iniş-çıkış'],
+    ...(AN.kayit ? [
+      ['speed', 'Ortalama hız', nf1.format(AN.kayit.ort) + ' km/sa', 'hareket hâlinde'],
+      ['bolt', 'En yüksek hız', nf0.format(AN.kayit.maks) + ' km/sa', ''],
+      ['play_arrow', 'Başlangıç', AN.kayit.bas, ''],
+      ['flag', 'Bitiş', AN.kayit.son, AN.kayit.mola ? 'mola ' + fmtDur(AN.kayit.mola) : '']
+    ] : [])
   ];
   $('an-body').innerHTML = `
     <section class="an-sec full">
@@ -192,7 +201,7 @@ function renderAnalysis() {
     <section class="an-sec an-last">
       <div class="an-actions">
         <button class="btn outline" id="an-gpx2"><span class="ms">download</span>GPX olarak indir</button>
-        ${AN.nav ? '' : '<button class="btn outline" id="an-fly"><span class="ms">3d_rotation</span>3D önizle</button>'}
+        ${AN.nav ? '' : '<button class="btn outline" id="an-fly"><span class="ms">3d_rotation</span>3D önizle</button>'}${AN.kayit ? '<button class="btn outline" id="an-oynat"><span class="ms">play_arrow</span>Haritada oynat</button>' : ''}
       </div>
       <p class="an-fine">Yükseklikler ~30 m çözünürlüklü arazi modelinden, ${km(pr.step)} aralıkla örneklenir.${pr.fixedSegs ? ` Tünel veya viyadük olduğu düşünülen ${pr.fixedSegs} kesimde arazi yerine düz geçiş varsayıldı.` : ''} Köprü ve tünellerde yol eğimi yine de farklı olabilir. Tırmanış kategorileri bisiklette yaygın uzunluk × eğim ölçeğine göredir.</p>
     </section>`;
@@ -228,9 +237,9 @@ function steepCard(icon, title, g, from, to) {
 }
 
 function compareHtml() {
-  if (AN.nav || dir.routes.length < 2 || !dir.routes.every(x => x.profile)) return '';
+  if (AN.kayit || AN.nav || dir.routes.length < 2 || !dir.routes.every(x => x.profile)) return '';
   const rows = dir.routes.map((x, i) => {
-    const xa = x === AN.r ? AN.a : analyzeProfile(x.profile, dir.mode);
+    const xa = x === AN.r ? AN.a : analyzeProfile(x.profile, AN.mode);
     const steepKm = xa.dist[0].m + xa.dist[4].m + xa.dist[5].m;
     return { i, x, steepKm, up: x.profile.ascent, down: x.profile.descent, maxUp: x.profile.maxUp };
   });
@@ -266,7 +275,7 @@ function segListHtml(kind) {
         <span class="an-seg-m">
           <b>${km(c.len)} · ${c.dh > 0 ? '+' : '−'}${mm(Math.abs(c.dh))} · ort. ${fmtPct1(c.avg)}</b>
           <small>${atKm(c.from)}'de başlar · ${mm(c.e0)} → ${mm(c.e1)} · en dik ${fmtSlope(c.max)} · ${anWord(c.avg)}${up && c.cat.label !== '–' ? ' · ' + c.cat.name : ''}</small>
-          ${!up && c.brake && dir.mode === 'car' ? '<small class="warn">Uzun iniş: düşük vites ve motor freni önerilir</small>' : ''}
+          ${!up && c.brake && AN.mode === 'car' ? '<small class="warn">Uzun iniş: düşük vites ve motor freni önerilir</small>' : ''}
         </span>
         <button class="an-map" data-kind="${kind}" data-n="${c.n}" aria-label="Haritada göster"><span class="ms">map</span></button>
       </div>`).join('')}</div>
@@ -281,6 +290,7 @@ function wireAnalysis() {
   $('an-fit').onclick = () => setRange(0, AN.pr.len);
   $('an-gpx2').onclick = () => exportGpx(AN.r);
   $('an-fly')?.addEventListener('click', () => { const r = AN.r; closeAnalysis(); setTimeout(() => flyover(r), 250); });
+  $('an-oynat')?.addEventListener('click', () => { const k = AN.kayit; closeAnalysis(); setTimeout(() => kytOynat(k.id), 250); });
   const byN = (kind, n) => AN.a[kind].find(c => c.n === +n);
   $('an-body').querySelectorAll('.an-seg').forEach(el => {
     const go = () => { const c = byN(el.dataset.kind, el.dataset.n); focusRange(c.from, c.to); };
@@ -458,13 +468,14 @@ addEventListener('resize', debounce(() => { if (AN.open) { drawChart(); drawOver
 /* ================= GPX dışa aktarma (rakımlı) ================= */
 async function exportGpx(r) {
   if (!r) return;
-  const pr = r.profile, name = `${dir.from?.name || 'Başlangıç'} - ${dir.to?.name || 'Hedef'}`;
+  const pr = r.profile, name = r.kayitAd || `${dir.from?.name || 'Başlangıç'} - ${dir.to?.name || 'Hedef'}`;
   const xmlEsc = s => String(s).replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c]));
   const pts = r.coords.map((c, i) => {
     const ele = pr ? profileAt(pr, r.cum[i]).elev : null;
-    return `<trkpt lat="${c[1].toFixed(6)}" lon="${c[0].toFixed(6)}">${ele != null ? `<ele>${ele.toFixed(1)}</ele>` : ''}</trkpt>`;
+    const t = r.times?.[i]; // kayıtlı yolculukta her noktanın zamanı
+    return `<trkpt lat="${c[1].toFixed(6)}" lon="${c[0].toFixed(6)}">${ele != null ? `<ele>${ele.toFixed(1)}</ele>` : ''}${t ? `<time>${new Date(t).toISOString()}</time>` : ''}</trkpt>`;
   }).join('\n');
-  const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="ATLAS3D" xmlns="http://www.topografix.com/GPX/1/1">\n<metadata><name>${xmlEsc(name)}</name><time>${new Date().toISOString()}</time></metadata>\n<trk><name>${xmlEsc(name)}</name><type>${dir.mode}</type><trkseg>\n${pts}\n</trkseg></trk>\n</gpx>\n`;
+  const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="ATLAS3D" xmlns="http://www.topografix.com/GPX/1/1">\n<metadata><name>${xmlEsc(name)}</name><time>${new Date().toISOString()}</time></metadata>\n<trk><name>${xmlEsc(name)}</name><type>${r.mode || dir.mode}</type><trkseg>\n${pts}\n</trkseg></trk>\n</gpx>\n`;
   const fname = ('atlas3d-' + name).toLocaleLowerCase('tr').replace(/[^a-z0-9çğıöşü]+/gi, '-').replace(/^-|-$/g, '').slice(0, 60) + '.gpx';
   const file = new File([gpx], fname, { type: 'application/gpx+xml' });
   if (isMobile() && navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e.name === 'AbortError') return; } }

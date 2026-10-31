@@ -23,7 +23,7 @@
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya:ital,wght@0,500;1,400&display=swap">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" media="print" onload="this.media='all'">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0..1,0&icon_names=3d_rotation,ac_unit,accessible,account_balance,add,add_a_photo,add_box,add_road,alt_route,apartment,architecture,arrow_back,arrow_downward,arrow_upward,attractions,bakery_dining,beach_access,block,bolt,bookmark,call,car_crash,car_repair,castle,check,checkroom,chevron_left,chevron_right,church,close,collections_bookmark,construction,content_copy,content_cut,dark_mode,deceased,delete,dentistry,devices,directions,directions_bike,directions_boat,directions_bus,directions_car,directions_walk,download,edit,ev_station,event,expand_less,fastfood,fit_screen,fitness_center,flag,flight,fork_left,fork_right,grid_view,group,height,help,history,history_edu,home,hotel,house,icecream,info,insights,install_mobile,ios_share,label,landscape,layers,list,local_atm,local_bar,local_cafe,local_fire_department,local_gas_station,local_grocery_store,local_hospital,local_library,local_mall,local_parking,local_pharmacy,local_police,local_post_office,local_shipping,location_city,location_on,map,menu,menu_book,merge,money_off,mosque,movie,museum,my_location,navigation,near_me,north_east,opacity,open_in_new,park,pause,person,pin_drop,play_arrow,play_circle,pool,public,ramp_left,ramp_right,receipt_long,refresh,remove,restaurant,roundabout_left,roundabout_right,route,satellite_alt,schedule,school,search,share,show_chart,skip_next,skip_previous,south_east,stadium,star,stop,storefront,straight,straighten,subway,swap_vert,tag,terrain,theater_comedy,timelapse,toll,traffic,train,tram,travel_explore,trending_down,trending_flat,trending_up,trip_origin,tune,turn_left,turn_right,turn_sharp_left,turn_sharp_right,turn_slight_left,turn_slight_right,two_wheeler,u_turn_left,volume_off,volume_up,warning,water,water_drop,where_to_vote,work,zoom_in,zoom_out&display=block">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0..1,0&icon_names=3d_rotation,ac_unit,accessible,account_balance,add,add_a_photo,add_box,add_road,alt_route,apartment,architecture,arrow_back,arrow_downward,arrow_upward,attractions,bakery_dining,beach_access,block,bolt,bookmark,call,car_crash,car_repair,castle,check,checkroom,chevron_left,chevron_right,church,close,collections_bookmark,construction,content_copy,content_cut,dark_mode,deceased,delete,dentistry,devices,directions,directions_bike,directions_boat,directions_bus,directions_car,directions_walk,download,edit,ev_station,event,expand_less,fastfood,fit_screen,fitness_center,flag,flight,fork_left,fork_right,grid_view,group,height,help,history,history_edu,home,hotel,house,icecream,info,insights,install_mobile,ios_share,label,landscape,layers,list,local_atm,local_bar,local_cafe,local_fire_department,local_gas_station,local_grocery_store,local_hospital,local_library,local_mall,local_parking,local_pharmacy,local_police,local_post_office,local_shipping,location_city,location_on,map,menu,menu_book,merge,money_off,mosque,movie,museum,my_location,navigation,near_me,north_east,opacity,open_in_new,park,pause,person,pin_drop,play_arrow,play_circle,pool,public,radio_button_checked,ramp_left,ramp_right,receipt_long,refresh,remove,restaurant,roundabout_left,roundabout_right,route,satellite_alt,schedule,school,search,share,show_chart,skip_next,skip_previous,south_east,speed,stadium,star,stop,storefront,straight,straighten,subway,swap_vert,tag,terrain,theater_comedy,timelapse,toll,traffic,train,tram,travel_explore,trending_down,trending_flat,trending_up,trip_origin,tune,turn_left,turn_right,turn_sharp_left,turn_sharp_right,turn_slight_left,turn_slight_right,two_wheeler,u_turn_left,volume_off,volume_up,warning,water,water_drop,where_to_vote,work,zoom_in,zoom_out&display=block">
 <link rel="stylesheet" href="./style.css">
 <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js" defer></script>
 <script src="./tolls.js" defer></script>
@@ -40,6 +40,7 @@
 <script src="./zaman.js" defer></script>
 <script src="./gunluk.js" defer></script>
 <script src="./koleksiyon.js" defer></script>
+<script src="./kayit.js" defer></script>
 </head>
 <body>
 <div id="map" role="application" aria-label="Üç boyutlu harita"></div>
@@ -124,6 +125,7 @@
   <div class="drawer-title">Yolculuk</div>
   <button class="drawer-item" data-act="vehicles"><span class="ms">directions_car</span>Araçlarım<span class="di-s" id="di-veh-count"></span></button>
   <button class="drawer-item" data-act="trips"><span class="ms">receipt_long</span>Yolculuk geçmişi<span class="di-s" id="di-trips"></span></button>
+  <button class="drawer-item" data-act="kayitlar"><span class="ms">radio_button_checked</span>Kayıtlı yolculuklar</button>
   <button class="drawer-item" data-act="prices"><span class="ms">local_gas_station</span>Akaryakıt fiyatları<span class="di-s" id="di-price"></span></button>
   <div class="drawer-sep"></div>
   <div class="drawer-title">Yerler</div>
@@ -168,6 +170,8 @@
 <div id="range-bar" class="measure-bar range-bar" hidden><span class="ms">timelapse</span><span id="range-text">Ulaşılabilir alan</span><span class="range-mins" id="range-mins"><button data-m="15">15 dk</button><button data-m="30">30 dk</button><button data-m="60">1 sa</button></span><button class="text-btn" id="range-end">Kapat</button></div>
 <div id="measure-bar" class="measure-bar" hidden><span class="ms">straighten</span><span id="measure-text">Haritaya dokunarak noktalar ekleyin</span><button class="text-btn" id="measure-prof">Profil</button><button class="text-btn" id="measure-undo">Geri al</button><button class="text-btn" id="measure-end">Bitti</button></div>
 
+<button type="button" id="kyt-btn" class="kyt-btn" aria-label="Yolculuk kaydını başlat"></button>
+<div id="kyt-oynatici" class="kyt-oynatici" hidden></div>
 <button type="button" id="hud" class="hud" hidden aria-label="Rakım ve eğim göstergesi: ayrıntılar için dokunun">
   <span class="hud-gauge" id="hud-gauge"></span>
   <span class="hud-main"><small id="hud-label">RAKIM</small><span class="hud-row"><b id="hud-elev">—</b><span id="hud-slope"></span></span><small id="hud-sub" class="hud-sub"></small></span>

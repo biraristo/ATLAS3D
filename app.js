@@ -544,7 +544,7 @@ async function buildProfile(r, z0) {
   const raw = await DEM.many(pts, z);
   if (raw.every(v => v == null)) return null;
   for (let i = 0; i < raw.length; i++) if (raw[i] == null) raw[i] = raw[i - 1] ?? raw.find(v => v != null) ?? 0;
-  const step = len / N, car = dir.mode === 'car';
+  const step = len / N, car = (r.mode || dir.mode) === 'car'; // kayıtlı yolculuklar kendi kipini taşır
   // Gürültü filtresi: araçta ~100 m, yayada ~60 m pencereli yumuşatma (köprü/yarma sıçramalarını da bastırır)
   const W = Math.max(1, Math.round((car ? 100 : 60) / step));
   const elevs = raw.map((_, i) => { let s = 0, n = 0; for (let k = -W; k <= W; k++) { const v = raw[i + k]; if (v != null) { s += v; n++; } } return s / n; });
@@ -1820,6 +1820,7 @@ $('drawer').onclick = e => {
   const a = e.target.closest('[data-act]')?.dataset.act; if (!a) return; closeDrawer();
   if (a === 'vehicles') openGarage();
   if (a === 'trips') openTrips();
+  if (a === 'kayitlar' && typeof kytListe === 'function') kytListe();
   if (a === 'prices') openPrices();
   if (a === 'places') openMyPlaces();
   if (a === 'stations') {

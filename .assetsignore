@@ -7,3 +7,4 @@ worker.js
 wrangler.toml
 README.md
 node_modules
+tools

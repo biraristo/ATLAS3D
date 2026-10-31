@@ -635,6 +635,53 @@ body.navigating.fuel-on .map-ctrls{bottom:calc(205px + var(--safe-b))}
 .gv-m small b{color:var(--text);font-weight:500}
 .gv-a{display:flex;align-items:center;gap:2px}
 .gv-add{padding:6px 16px 4px;display:flex;gap:8px}
+.gv-learn{display:flex;align-items:center;gap:4px;color:var(--green)!important}.gv-learn .ms{font-size:15px}
+/* Araç seçici (katalog) */
+.cp-head{display:flex;align-items:center;gap:6px;padding-left:12px}
+.cp-head>div{min-width:0}.cp-head h2{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cp-search{display:flex;align-items:center;gap:8px;margin:12px 16px 4px;border:1px solid var(--line);border-radius:10px;padding:0 10px;height:40px;background:var(--bg)}
+.cp-search:focus-within{border-color:var(--blue)}
+.cp-search .ms{color:var(--muted);font-size:20px}
+.cp-search input{flex:1;min-width:0;border:0;outline:0;background:none;font:inherit;font-size:15px;color:var(--text)}
+.cp-sec{padding:14px 24px 6px;font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.cp-grid{display:flex;flex-wrap:wrap;gap:8px;padding:4px 16px 6px}
+.cp-grid.yrs{padding-top:16px}
+.cp-chip{border:1px solid var(--line);background:var(--bg);border-radius:18px;padding:7px 14px;font:inherit;font-size:14px;color:var(--text-2);cursor:pointer}
+.cp-chip:hover{background:var(--blue-bg);border-color:var(--blue);color:var(--blue-d)}
+.cp-grid.yrs .cp-chip{min-width:72px;text-align:center;font-variant-numeric:tabular-nums}
+.cp-list{display:flex;flex-direction:column}
+.cp-it{display:flex;align-items:center;gap:10px;width:100%;padding:11px 24px;border:0;border-bottom:1px solid var(--surface-3);background:none;font:inherit;text-align:left;color:var(--text);cursor:pointer}
+.cp-it:hover{background:var(--hover)}
+.cp-it>.ms{color:var(--muted);font-size:20px}.cp-it.eng>.ms{color:var(--blue-d)}
+.cp-m{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.cp-m b{font-weight:500;font-size:15px}
+.cp-m small{color:var(--muted);font-size:12.5px;line-height:1.4}
+.cp-m small b{font-size:12.5px;color:var(--text)}
+.cp-foot{padding:14px 16px 4px}.cp-foot .mini-note{padding:10px 8px}
+/* Araç kutusu ve düzenleme */
+.vf-car{display:flex;align-items:center;gap:10px;justify-content:space-between;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);margin-bottom:12px}
+.vf-car>div{min-width:0;display:flex;flex-direction:column;gap:2px}
+.vf-car b{font-weight:500;font-size:14px}.vf-car small{color:var(--muted);font-size:12px}
+.vf-tog{display:flex;align-items:flex-start;gap:10px;margin:12px 0 2px;font-size:13.5px;color:var(--text);cursor:pointer}
+.vf-tog input{width:18px;height:18px;margin:1px 0 0;accent-color:var(--blue-d);flex:none}
+.vf-tog small{display:block;color:var(--muted);font-size:12px}
+.vf-tog.sm{align-items:center;margin:20px 0 0}
+.ve-car{display:flex;align-items:flex-start;gap:12px;padding:12px;border:1px solid var(--blue);background:var(--surface-2);border-radius:14px;margin-bottom:16px}
+.ve-car>.ms{color:var(--blue-d);font-size:26px}
+.ve-car>div{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.ve-car b{font-weight:500;font-size:15px}.ve-car small{color:var(--muted);font-size:12.5px;line-height:1.4}.ve-car small b{font-size:12.5px;color:var(--text)}
+.ve-pick{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.cost-total{display:flex;flex-direction:column;align-items:flex-end;line-height:1.15}
+.cost-range{font-size:11.5px;font-weight:400;color:var(--muted)}
+/* Yakıt alımları */
+.fl-card{margin:14px 16px 0;padding:14px 16px;border-radius:14px;background:var(--surface-2);border:1px solid var(--line-2)}
+.fl-big{display:flex;align-items:baseline;gap:8px}.fl-big b{font-size:28px;font-weight:600;font-variant-numeric:tabular-nums}.fl-big small{color:var(--muted)}
+.fl-sub{font-size:12.5px;color:var(--muted);line-height:1.5;margin-top:4px}.fl-sub b{color:var(--text)}
+.fl-form{padding-top:12px}
+.fl-list{padding:4px 0 12px}
+.fl-it{display:flex;align-items:center;gap:12px;padding:8px 16px 8px 24px;border-bottom:1px solid var(--surface-3)}
+.fl-it>.ms{color:var(--muted)}
+.fl-m{flex:1;min-width:0;display:flex;flex-direction:column}.fl-m b{font-weight:500;font-size:14px}.fl-m small{color:var(--muted);font-size:12px}
 .ve-form{padding:14px 24px}
 .ve-form>.vf-f{margin-bottom:12px}
 .ve-form .vf-grid{grid-template-columns:repeat(2,minmax(0,1fr))}

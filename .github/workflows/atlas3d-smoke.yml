@@ -16,7 +16,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate JavaScript and site files
         run: |
-          for f in app.js analysis.js terrain.js traffic.js tolls.js ferries.js fuel.js sw.js; do node --check "$f"; done
+          for f in app.js analysis.js terrain.js traffic.js tolls.js ferries.js cycles.js fuel.js vehicles.js sw.js; do node --check "$f"; done
+          node -e "const fs=require('fs');const i=JSON.parse(fs.readFileSync('data/vehicles/index.json'));for(const m of i.makes)JSON.parse(fs.readFileSync('data/vehicles/'+m.f));console.log(i.makes.length+' marka')"
           node --input-type=module --check < worker.js
           # index.html'de çağrılan her yerel betik depoda olmalı
           for f in $(grep -o 'src="\./[^"]*"' index.html | cut -d'"' -f2); do test -s "$f" || { echo "Eksik: $f"; exit 1; }; done

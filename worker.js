@@ -7,6 +7,7 @@
 //   /api/nearby        Nominatim (harita alanında kategori araması)
 //   /api/fuel          EPDK günlük akaryakıt ve LPG bayi satış fiyatı bülteni (Türkiye ortalaması)
 //   /api/traffic/*     TomTom (TOMTOM_API_KEY varsa): trafik karoları, trafikli rota, ulaşılabilir alan
+//   /api/weather       Open-Meteo: rota boyunca sıcaklık ve rüzgâr (yakıt hesabı)
 //   /api/config        özellik bayrakları + ziyaretçinin yaklaşık konumu (Cloudflare)
 //   /api/health        durum
 import { connect } from 'cloudflare:sockets';
@@ -131,6 +132,22 @@ const routes = {
     if (!q || bb.length !== 4 || bb.some(v => v === null)) return json([], 400);
     const [w, s, e, n] = bb;
     return cachedFetch(`${NOMINATIM}/search?format=jsonv2&limit=40&bounded=1&addressdetails=1&extratags=1&accept-language=tr&viewbox=${w},${n},${e},${s}&q=` + encodeURIComponent(q), 86400, ctx, origin);
+  },
+  // Rota boyunca anlık hava: sıcaklık (°C), 10 m rüzgâr hızı (m/s) ve geldiği yön (°). Open-Meteo, anahtarsız. 20 dk önbellek.
+  async '/api/weather'(p, ctx) {
+    const pts = (p.get('pts') || '').split(';').slice(0, 8).map(s => s.split(',').map(v => num(v, 2)));
+    if (!pts.length || pts.some(x => x.length !== 2 || x.includes(null) || Math.abs(x[0]) > 90 || Math.abs(x[1]) > 180)) return json({ error: 'pts' }, 400);
+    const u = `https://api.open-meteo.com/v1/forecast?latitude=${pts.map(x => x[0]).join(',')}&longitude=${pts.map(x => x[1]).join(',')}&current=temperature_2m,wind_speed_10m,wind_direction_10m&wind_speed_unit=ms&timezone=auto`;
+    const key = new Request(u);
+    const hit = await caches.default.match(key); if (hit) return hit;
+    const r = await fetch(u, { headers: { 'User-Agent': UA } });
+    if (!r.ok) return json({ error: 'upstream ' + r.status }, 502);
+    const d = await r.json(), arr = Array.isArray(d) ? d : [d];
+    const points = arr.map(x => ({ t: x.current?.temperature_2m, ws: x.current?.wind_speed_10m, wd: x.current?.wind_direction_10m })).filter(x => Number.isFinite(x.t));
+    if (points.length !== pts.length) return json({ error: 'incomplete' }, 502);
+    const res = json({ points, source: 'Open-Meteo' }, 200, 'public, max-age=1200');
+    ctx.waitUntil(caches.default.put(key, res.clone()));
+    return res;
   }
 };
 

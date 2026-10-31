@@ -188,6 +188,18 @@ function segParts(P, m, v, dx, dh, elev, env, vw = 0) {
 const REF_MIX = [[30, 0.45], [75, 0.25], [110, 0.30]];
 function refEnergyPerM(P, m) { const env = envFor(18, P.eng.ev); return REF_MIX.reduce((s, [kmh, w]) => s + w * segParts(P, m, kmh / 3.6, 1000, 0, 0, env).e / 1000, 0); }
 
+// Modellenmeyen farkın hıza göre dağılımı: kullanıcı raporları farkın çoğunun şehir içinde (sert hızlanma, kısa yol,
+// rölanti) oluştuğunu, sabit otoyol sürüşünde küçük kaldığını gösteriyor. Ağırlık referans karışımda ortalama 1 olacak
+// şekilde normalize edilir; böylece aracın tipik tüketimi değişmez, yalnızca şehir/otoyol dağılımı düzelir.
+const residW = kmh => clamp(1.7 - 0.014 * kmh, 0.3, 1.5);
+function residNorm(P) {
+  const env = envFor(18, P.eng.ev), m = P.m0 + 90; let num = 0, den = 0;
+  for (const [kmh, w] of REF_MIX) { const e = segParts(P, m, kmh / 3.6, 1000, 0, 0, env).e * w; num += e * residW(kmh); den += e; }
+  return num / den || 1;
+}
+// Hızdaki pay / ortalama pay oranı (enerjiyle çarpılır; dönüşümde P.resid zaten var)
+const residScale = (P, kmh) => (P.resid > 1 ? (1 + (P.resid - 1) * residW(kmh) / (P.wNorm || 1)) / P.resid : 1);
+
 // Laboratuvar → yol farkının modellenmeyen kısmı (yük, lastik basıncı, test esneklikleri, sürüş). Kaynak: ICCT "From laboratory to road"
 // serisinde NEDC farkı 2010'larda %25–40'a çıkar, WLTP'de ~%15'e iner; bunun hız/klima/soğuk çalıştırma kısmını ayrıca modelliyoruz.
 function residual(c) {
@@ -234,7 +246,8 @@ function vehPhys(v = VEH) {
     P.src = v.avg ? 'user' : 'body';
     if (!P.ev) P.coldJ = 0; // ortalama zaten soğuk çalıştırmaları içerir
   }
-  if (v.lpgConv && b.fuel === 'benzin') { P.lpg = true; } // enerji benzine göre hesaplanır, litreye çevirirken LPG katsayısı
+  if (v.lpgConv && b.fuel === 'benzin') { P.lpg = true; }
+  P.wNorm = residNorm(P); if (P.evPart) P.evPart.wNorm = residNorm(P.evPart); // enerji benzine göre hesaplanır, litreye çevirirken LPG katsayısı
   PHYS_CACHE.set(v.id, P);
   return P;
 }
@@ -292,6 +305,8 @@ function speedFn(r, v = VEH) {
     for (const j of [lo, lo - 1, lo + 1]) {
       const s = st[j]; if (!(s && s.duration > 0 && s.distance > 40)) continue;
       const osrm = s.distance / s.duration, kmh = osrm * 3.6;
+      // TomTom adım süreleri gerçek (trafikli) hızdır: OSRM'deki yasal sınır × 0,8 dönüşümü uygulanmaz
+      if (r.provider === 'tomtom') return { v: Math.max(3, Math.min(cap, kmh >= 60 ? osrm * style : osrm)), base: osrm };
       if (kmh < 60) return { v: Math.max(3, osrm), base: osrm };
       const real = kmh >= 75 ? osrm / 0.8 : osrm * (1 + (kmh - 60) / 15 * 0.25); // 60→75 arası yumuşak geçiş
       return { v: Math.max(3, Math.min(cap, real * style)), base: osrm };
@@ -304,7 +319,9 @@ function speedFn(r, v = VEH) {
 const WX = new WeakMap();
 function routeWeather(r) {
   if (!FSET.weather || !r?.coords?.length) return null;
-  const w = WX.get(r); if (w && (w.data || w.pending) && Date.now() - w.t < 30 * 60e3) return w.data || null;
+  const w = WX.get(r);
+  if (w && (w.data || w.pending) && Date.now() - w.t < 30 * 60e3) return w.data || null;
+  if (w && !w.data && Date.now() - w.t < 5 * 60e3) return null; // başarısız istek: 5 dk tekrar deneme
   // Yol boyunca en çok 6 nokta
   const n = Math.min(6, Math.max(2, Math.ceil((r.total || 0) / 80000) + 1)), pts = [];
   for (let i = 0; i < n; i++) { const c = r.coords[Math.round(i / (n - 1) * (r.coords.length - 1))]; pts.push(c[1].toFixed(2) + ',' + c[0].toFixed(2)); }
@@ -338,7 +355,7 @@ function smoothElev(e, step, W = 600) {
 /* ----- Rota maliyeti ----- */
 const COST_CACHE = new WeakMap();
 const clearCostCache = () => { PHYS_CACHE.clear(); if (typeof dir !== 'undefined') for (const r of dir.routes) COST_CACHE.delete(r); };
-const vehSig = () => JSON.stringify([VEH.id, VEH.cat?.y, VEH.cat?.c, VEH.body, VEH.fuel, VEH.avg, VEH.pax, VEH.lpgConv, VEH.soc, VEH.fills?.length, unitPrice().v, elecPrice(), FSET.style, FSET.weather]);
+const vehSig = () => JSON.stringify([VEH.id, VEH.cat, VEH.body, VEH.fuel, VEH.avg, VEH.pax, VEH.lpgConv, VEH.soc, VEH.fills?.length, unitPrice().v, elecPrice(), FSET.style, FSET.weather]);
 // Çıktı: { qty, unit, per100, price, fuelCost, toll, total, lo, hi, perPerson, shares, climbQty, exact, elec?, notes }
 function routeCost(r) {
   if (!r || dir.mode !== 'car') return null;
@@ -353,10 +370,10 @@ function routeCost(r) {
   const parts = { roll: 0, aero: 0, accel: 0, grade: 0 };
   const add = (x, dx, dh, el, brg) => {
     const w = wxAt(wx, x), env = envFor(w?.T, P.ev), sp = speed(x), vw = w ? headwind(w, brg) : 0;
-    const s = segParts(P, m, sp.v, dx, dh, el, env, vw), f = segParts(P, m, sp.v, dx, 0, el, env, vw);
-    E += s.e; Eflat += f.e; idle += s.idleE; km += dx / 1000; Tsum += env.T * dx; Tn += dx; wSum += vw * dx;
+    const s = segParts(P, m, sp.v, dx, dh, el, env, vw), f = segParts(P, m, sp.v, dx, 0, el, env, vw), rs = residScale(P, sp.v * 3.6);
+    E += s.e * rs; Eflat += f.e * rs; idle += s.idleE * rs; km += dx / 1000; Tsum += env.T * dx; Tn += dx; wSum += vw * dx;
     parts.roll += s.roll; parts.aero += Math.max(0, s.aero); parts.grade += Math.max(0, s.gr); parts.accel += s.ke;
-    if (evP) segs.push({ e: s.e, ev: segParts(evP, m, sp.v, dx, dh, el, envFor(w?.T, true), vw).e });
+    if (evP) segs.push({ e: s.e * rs, ev: segParts(evP, m, sp.v, dx, dh, el, envFor(w?.T, true), vw).e * residScale(evP, sp.v * 3.6) });
   };
   const pr = r.profile;
   if (pr && pr.dists?.length > 1) {
@@ -371,9 +388,9 @@ function routeCost(r) {
   }
   const Tavg = Tn ? Tsum / Tn : null;
   // Trafik gecikmesi: dur-kalk ve rölanti (hibrit/elektrikte yalnızca yardımcı sistemler)
-  const delay = r.traffic?.delay || 0, envAvg = envFor(wx ? Tavg : null, P.ev);
+  const delay = r.provider === 'tomtom' ? 0 : r.traffic?.delay || 0, envAvg = envFor(wx ? Tavg : null, P.ev);
   const jamW = (fuelPower(P, 0, 0, envAvg) + Math.max(0, fuelPower(P, 2500, 4, envAvg))) / 2, jam = jamW * delay;
-  E += jam; Eflat += jam; idle += jam;
+  const rj = residScale(P, 15); E += jam * rj; Eflat += jam * rj; idle += jam * rj;
   if (evP) segs.push({ e: jam, ev: (fuelPower(evP, 0, 0, envFor(Tavg, true)) + fuelPower(evP, 2500, 4, envFor(Tavg, true))) / 2 * delay });
   // Soğuk çalıştırma: sıcaklık düştükçe artar
   const cold = P.coldJ * (1 + 0.05 * Math.max(0, 23 - (wx ? Tavg : 15)));
@@ -498,7 +515,7 @@ function liveFuelTick(r, along) {
     const pe = fuelPower(P.evPart, Pw, v < 0.5 ? 0 : v, envFor(w?.T, true)) * P.evPart.resid * pers.f; // W şebeke
     const kwh = pe * dt / 3.6e6; LIVE.kwh += kwh; LIVE.soc = Math.max(0, LIVE.soc - kwh / P.batKWh * 100);
     rate = 0;
-  } else rate = fuelPower(P, Pw, v < 0.5 ? 0 : v, env) * fConv;
+  } else rate = fuelPower(P, Pw, v < 0.5 ? 0 : v, env) * fConv * residScale(P, Math.max(15, kmh));
   LIVE.rate = LIVE.rate + (rate - LIVE.rate) * Math.min(1, dt / 5);
   LIVE.qty += rate * dt; LIVE.dist += v * dt; LIVE.sec += dt; LIVE.maxV = Math.max(LIVE.maxV, kmh);
   if (kmh >= 125) LIVE.fastSec += dt; if (Pw <= 0 && kmh > 15) LIVE.cutSec += dt;
@@ -512,7 +529,7 @@ function liveHint(r, along, kmh) {
   if (fastM < 5000) return '';
   const P = vehPhys(), m = P.m0 + 75 * VEH.pax + 15, env = envFor(LIVE.wx ? wxAt(LIVE.wx, along)?.T : null, P.ev), alt = 110;
   const conv = P.resid * personal().f / P.unitJ * (P.lpg ? LPG_CONV : 1);
-  const per = x => segParts(P, m, x / 3.6, 1000, 0, 0, env).e * conv / 1000; // birim/m
+  const per = x => segParts(P, m, x / 3.6, 1000, 0, 0, env).e * residScale(P, x) * conv / 1000; // birim/m
   const extra = (per(kmh) - per(alt)) * fastM * unitPrice().v, late = fastM / (alt / 3.6) - fastM / (kmh / 3.6);
   if (extra < 15) return '';
   return `Bu hızla kalan ${fmtDist(fastM)} hızlı yolda <b>+${fmtTL(extra)}</b> · ${alt} km/sa ile ~${fmtDur(late)} geç varırsınız`;

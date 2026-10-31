@@ -278,6 +278,8 @@ def consumption(x, fuel, pt, year):
 def slug(s):
     return re.sub(r'[^a-z0-9]+', '-', strip_acc(s.lower())).strip('-')
 
+LOGOS = json.load(open(os.path.join(ROOT, 'tools', 'brand_logos.json'))) if os.path.exists(os.path.join(ROOT, 'tools', 'brand_logos.json')) else {}
+
 def main():
     rows = []
     for y in range(2010, 2026):
@@ -413,7 +415,8 @@ def main():
         data = {'make': make, 'models': models}
         fn = slug(make) + '.json'
         json.dump(data, open(os.path.join(OUT, fn), 'w'), ensure_ascii=False, separators=(',', ':'))
-        index.append({'n': make, 'f': fn, 'models': len(models), 'reg': make_regs[make]})
+        logo = LOGOS.get(make)
+        index.append({'n': make, 'f': fn, 'models': len(models), 'reg': make_regs[make], **({'logo': logo} if logo else {})})
     # Taliant eşlemesi: Logan'ın 2021+ yıllarından
     try:
         dac = json.load(open(os.path.join(OUT, 'dacia.json')))

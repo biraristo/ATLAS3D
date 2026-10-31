@@ -66,6 +66,11 @@ const imgAttr = (c, md = c.md, y = c.y, body = c.body) => `data-img="${esc(`${c.
 // Yakıt türü rengi (kart şeridi ve gösterge)
 const fuelKind = v => (v.p === 'bev' ? 'ev' : v.p === 'ice' ? v.f : 'hyb');
 const FUEL_KIND_TR = { benzin: 'Benzin', dizel: 'Dizel', lpg: 'LPG', ev: 'Elektrik', hyb: 'Hibrit' };
+// Marka işareti: Wikimedia Commons'taki logo (beyaz zemin üzerinde, iki temada da okunur); yüklenemezse harf rozeti
+const logoUrl = f => `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(f)}?width=120`;
+const brandMark = m => m.logo
+  ? `<span class="cp-logo"><img src="${logoUrl(m.logo)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.parentNode.outerHTML=this.parentNode.dataset.fb" ></span>`.replace('class="cp-logo"', `class="cp-logo" data-fb="${esc(monogram(m.n))}"`)
+  : monogram(m.n);
 // Marka monogramı: adın baş harflerinden, adına göre sabit renk
 const monogram = n => {
   const w = n.replace(/[^A-Za-zÀ-ž0-9 -]/g, '').split(/[\s-]+/).filter(Boolean);
@@ -97,10 +102,10 @@ function openCatalogPicker(onPick, { push = true } = {}) {
         const match = all.filter(m => !q || trLower(m.n).includes(q));
         const top = q ? [] : TR_TOP.map(n => all.find(m => m.n === n)).filter(Boolean);
         html = head + search('Marka ara: Fiat, Togg, Renault…') +
-          (top.length ? `<h3 class="cp-sec">Türkiye'de yollarda en çok görülenler</h3><div class="cp-brands">${top.map(m => `<button class="cp-brand" data-make="${esc(m.f)}" data-n="${esc(m.n)}">${monogram(m.n)}<b>${esc(m.n)}</b></button>`).join('')}</div><h3 class="cp-sec">Tüm markalar</h3>` : '') +
-          `<div class="cp-list">${match.map(m => `<button class="cp-it" data-make="${esc(m.f)}" data-n="${esc(m.n)}">${monogram(m.n)}<span class="cp-m"><b>${esc(m.n)}</b><small>${m.models} model</small></span><span class="ms">chevron_right</span></button>`).join('') || `<div class="empty">"${esc(st.q)}" adında marka yok.<br><small>Aşağıdan aracını elle girebilirsin.</small></div>`}</div>` +
+          (top.length ? `<h3 class="cp-sec">Türkiye'de yollarda en çok görülenler</h3><div class="cp-brands">${top.map(m => `<button class="cp-brand" data-make="${esc(m.f)}" data-n="${esc(m.n)}">${brandMark(m)}<b>${esc(m.n)}</b><small>${m.models} model</small></button>`).join('')}</div><h3 class="cp-sec">Tüm markalar</h3>` : '') +
+          `<div class="cp-list">${match.map(m => `<button class="cp-it" data-make="${esc(m.f)}" data-n="${esc(m.n)}">${brandMark(m)}<span class="cp-m"><b>${esc(m.n)}</b><small>${m.models} model</small></span><span class="ms">chevron_right</span></button>`).join('') || `<div class="empty">"${esc(st.q)}" adında marka yok.<br><small>Aşağıdan aracını elle girebilirsin.</small></div>`}</div>` +
           `<div class="cp-foot"><button class="btn outline" id="cp-manual"><span class="ms">tune</span>Aracım listede yok, elle gireceğim</button>
-           <p class="mini-note">Liste, Avrupa'da 2010–2025 arasında satılan binek araçların resmî tip onayı kayıtlarından (AB Çevre Ajansı) gelir. Türkiye'ye özgü bazı adlar eşdeğeriyle eşleştirildi: Egea = Tipo, Taliant = Logan.</p></div>`;
+           <p class="mini-note">Liste, Avrupa'da 2010–2025 arasında satılan binek araçların resmî tip onayı kayıtlarından (AB Çevre Ajansı) gelir. Türkiye'ye özgü bazı adlar eşdeğeriyle eşleştirildi: Egea = Tipo, Taliant = Logan. Logolar ve araç görselleri Wikimedia Commons'tan; markalar sahiplerine aittir.</p></div>`;
       }
     } else if (st.step === 'model') {
       if (!st.data) html = head + '<div class="loading"><div class="spinner"></div>Modeller yükleniyor…</div>';
@@ -330,7 +335,7 @@ function openFills(v) {
       </div>
       <div class="fl-list">${fs.map(f => `<div class="fl-it"><span class="ms">${f.full ? 'local_gas_station' : 'water_drop'}</span><span class="fl-m"><b>${nf0.format(f.odo)} km · ${nf1.format(f.qty)} ${u}</b><small>${new Date(f.t).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}${f.tl ? ` · ${fmtTL(f.tl)} (${nf2.format(f.tl / f.qty)} ₺/${u})` : ''}${f.full ? '' : ' · ara dolum'}</small></span><button class="icon-btn" data-del="${f.t}" aria-label="Sil"><span class="ms">close</span></button></div>`).join('')}</div>`;
     $('fl-add').onclick = () => {
-      const odo = parseNum($('fl-odo').value.replace(/\./g, '')), qty = parseNum($('fl-qty').value), tl = parseNum($('fl-tl').value), full = $('fl-full').checked;
+      const odo = parseNum($('fl-odo').value.replace(/[.,\s]/g, '')), qty = parseNum($('fl-qty').value), tl = parseNum($('fl-tl').value), full = $('fl-full').checked;
       if (!odo || !qty) { toast('Kilometre ve miktarı girin'); return; }
       if (qty > 250) { toast('Miktar çok büyük görünüyor'); return; }
       if ((v.fills || []).some(f => f.odo === odo)) { toast('Bu kilometrede kayıt zaten var'); return; }

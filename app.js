@@ -327,6 +327,7 @@ function applyBasemap() {
     else if (l.type === 'background') vis = 'visible';
     else if (sat) vis = 'none';
     if (isoOn && l.type === 'symbol' && !ISO_LABEL.test(id)) vis = 'none';
+    if (typeof eski !== 'undefined' && eski.sinir && ESKI_BUGUN.includes(id)) vis = 'none'; // tarihî sınırlar açıkken bugünkü sınır ve ülke adları gizli
     // İzometrik + uydu: gerçek uydu fotoğrafının üstünde 3D binalar durur
     if (id === 'building-3d') vis = (!sat || isoOn) && opts.buildings ? 'visible' : 'none';
     if (id === 'building') vis = !sat ? 'visible' : 'none';

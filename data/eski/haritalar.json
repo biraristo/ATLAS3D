@@ -1,0 +1,202 @@
+{
+ "v": 1,
+ "tiles": "https://mapwarper.net/maps/tile/{id}/{z}/{x}/{y}.png",
+ "harita": [
+  {
+   "id": 108266,
+   "ad": "Matrakçı Nasuh'un İstanbul'u",
+   "yil": 1537,
+   "bolge": "İstanbul",
+   "not": "Beyân-ı Menâzil minyatürü; İstanbul ve Galata kuşbakışı",
+   "bbox": [
+    28.9244,
+    41.00079,
+    29.00861,
+    41.07108
+   ],
+   "kaynak": "https://mapwarper.net/maps/108266"
+  },
+  {
+   "id": 86940,
+   "ad": "Bizans dönemi Konstantinopolis",
+   "yil": 1000,
+   "bolge": "İstanbul",
+   "not": "Bizans şehrinin yeniden çizimi: surlar, forumlar, limanlar",
+   "bbox": [
+    28.91111,
+    40.98852,
+    28.99796,
+    41.04466
+   ],
+   "kaynak": "https://mapwarper.net/maps/86940"
+  },
+  {
+   "id": 101998,
+   "ad": "Konstantinopolis (Shepherd tarih atlası)",
+   "yil": 1453,
+   "bolge": "İstanbul",
+   "not": "W. R. Shepherd, Historical Atlas, 1923",
+   "bbox": [
+    28.89839,
+    40.95655,
+    29.04857,
+    41.07045
+   ],
+   "kaynak": "https://mapwarper.net/maps/101998"
+  },
+  {
+   "id": 107970,
+   "ad": "İstanbul 1908",
+   "yil": 1908,
+   "bolge": "İstanbul",
+   "not": "Mehmed Eşref, Karacaoğlu Matbaası",
+   "bbox": [
+    28.79479,
+    40.83018,
+    29.25485,
+    41.32328
+   ],
+   "kaynak": "https://mapwarper.net/maps/107970"
+  },
+  {
+   "id": 104948,
+   "ad": "İstanbul 1928",
+   "yil": 1928,
+   "bolge": "İstanbul",
+   "not": "Osmanlıca harita",
+   "bbox": [
+    28.90977,
+    40.98481,
+    28.99798,
+    41.06741
+   ],
+   "kaynak": "https://mapwarper.net/maps/104948"
+  },
+  {
+   "id": 94342,
+   "ad": "Cedid Atlas: Rumeli ve Anadolu",
+   "yil": 1803,
+   "bolge": "Anadolu",
+   "not": "Abdurrahman Efendi, ilk basılı Osmanlı dünya atlası",
+   "bbox": [
+    13.67351,
+    33.28984,
+    44.87802,
+    48.55475
+   ],
+   "kaynak": "https://mapwarper.net/maps/94342"
+  },
+  {
+   "id": 55378,
+   "ad": "Anadolu 1879",
+   "yil": 1879,
+   "bolge": "Anadolu",
+   "not": "",
+   "bbox": [
+    31.75696,
+    35.77896,
+    37.65079,
+    38.21593
+   ],
+   "kaynak": "https://mapwarper.net/maps/55378"
+  },
+  {
+   "id": 63173,
+   "ad": "Osmanlı Asya vilayetleri 1884",
+   "yil": 1884,
+   "bolge": "Anadolu",
+   "not": "Heinrich Kiepert",
+   "bbox": [
+    24.60215,
+    28.40891,
+    54.26611,
+    42.67957
+   ],
+   "kaynak": "https://mapwarper.net/maps/63173"
+  },
+  {
+   "id": 77741,
+   "ad": "Küçük Asya (Kiepert)",
+   "yil": 1890,
+   "bolge": "Anadolu",
+   "not": "Heinrich Kiepert",
+   "bbox": [
+    7.88998,
+    24.45582,
+    59.40476,
+    51.30561
+   ],
+   "kaynak": "https://mapwarper.net/maps/77741"
+  },
+  {
+   "id": 96071,
+   "ad": "İzmir planı 1854",
+   "yil": 1854,
+   "bolge": "İzmir",
+   "not": "",
+   "bbox": [
+    27.11035,
+    38.40038,
+    27.17923,
+    38.45072
+   ],
+   "kaynak": "https://mapwarper.net/maps/96071"
+  },
+  {
+   "id": 60465,
+   "ad": "Kahire 1920",
+   "yil": 1920,
+   "bolge": "Kahire",
+   "not": "",
+   "bbox": [
+    31.20003,
+    29.99858,
+    31.33218,
+    30.08137
+   ],
+   "kaynak": "https://mapwarper.net/maps/60465"
+  },
+  {
+   "id": 12052,
+   "ad": "Kahire (eski kuşbakışı plan)",
+   "yil": 1550,
+   "bolge": "Kahire",
+   "not": "Tarihi kesin değil",
+   "bbox": [
+    31.1326,
+    29.89156,
+    31.36402,
+    30.18548
+   ],
+   "kaynak": "https://mapwarper.net/maps/12052"
+  },
+  {
+   "id": 91816,
+   "ad": "Kudüs 1815",
+   "yil": 1815,
+   "bolge": "Kudüs",
+   "not": "",
+   "bbox": [
+    35.2024,
+    31.73193,
+    35.26749,
+    31.80814
+   ],
+   "kaynak": "https://mapwarper.net/maps/91816"
+  },
+  {
+   "id": 42332,
+   "ad": "Roma (Bufalini)",
+   "yil": 1551,
+   "bolge": "Roma",
+   "not": "Leonardo Bufalini'nin Roma planı",
+   "bbox": [
+    12.43811,
+    41.85956,
+    12.53862,
+    41.93214
+   ],
+   "kaynak": "https://mapwarper.net/maps/42332"
+  }
+ ]
+}

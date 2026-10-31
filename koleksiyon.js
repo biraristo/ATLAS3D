@@ -96,6 +96,7 @@ function kolFiltre() {
 
 function kolSec(k) {
   kolDur(true);
+  map.getSource('kol-iz')?.setData({ type: 'FeatureCollection', features: [] }); // biten yolculuğun izi de silinir
   kol.secili = k; kol.ids = k ? k.ids : null;
   if (typeof zamanUygula === 'function') zamanUygula();
   kolCizgi();

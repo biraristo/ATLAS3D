@@ -928,3 +928,36 @@ body.eski-acik .hud{display:none}
 .eb-yil{font-family:Alegreya,Georgia,serif;font-size:17px;font-weight:500;min-width:58px;text-align:right}
 @media (max-width:720px){.eski-bar{left:10px;right:10px;width:auto}}
 body.panel-open .eski-bar,body.navigating .eski-bar,body.dir-open .eski-bar{display:none}
+
+/* ================= Zaman kaydırıcısı ================= */
+.zaman-chip{color:#11807c}.zaman-chip .ms{font-size:17px}
+.zaman-chip.on{background:#11807c;color:#fff}
+body.zaman-acik .hud{display:none}
+.zaman-panel{position:fixed;z-index:16;left:12px;bottom:calc(14px + var(--safe-b,0px));width:420px;background:var(--bg);border-radius:20px;box-shadow:var(--shadow);padding:12px 14px 10px}
+.zp-ust{display:flex;align-items:baseline;gap:10px}
+.zp-yil{font-family:Alegreya,Georgia,serif;font-size:34px;font-weight:500;line-height:1;min-width:2.6em}
+.zp-donem{flex:1;font-size:14px;color:var(--muted);line-height:1.3}
+.zp-ust .icon-btn{align-self:flex-start;margin:-6px -8px 0 0}
+.zp-sayi{font-size:13px;color:#11807c;margin-top:4px}.zp-sayi b{font-weight:500}
+.zp-hist{position:relative;height:46px;margin-top:8px}
+.zp-hist i{position:absolute;bottom:0;border-radius:2px 2px 0 0;background:var(--line)}
+.zp-hist i.on{background:#3f979e}
+.zp-ray{position:relative;margin-top:2px;padding-bottom:18px}
+.zp-ray input{width:100%;margin:0;accent-color:#3f979e}
+.zp-tik{position:relative;height:14px}
+.zp-tik span{position:absolute;top:2px;font-size:11px;color:var(--muted);transform:translateX(-50%);white-space:nowrap}
+.zp-alt{display:flex;align-items:center;gap:10px}
+.zp-oynat{width:42px;height:42px;border:0;border-radius:50%;background:#3f979e;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none}
+.zp-oynat .ms{font-size:26px}
+.zp-mod{display:flex;background:var(--surface-3);border-radius:18px;padding:3px}
+.zp-mod button{border:0;background:none;padding:6px 11px;border-radius:15px;font:inherit;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer}
+.zp-mod button.on{background:var(--bg);color:#11807c;box-shadow:0 1px 2px rgba(0,0,0,.15)}
+.zp-tahmin{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-2);margin-left:auto;cursor:pointer}
+.zp-tahmin input{accent-color:#3f979e}
+.zp-not{font-size:11.5px;color:var(--muted);margin-top:8px}
+.zp-not a,.eski-omo{color:#11807c;text-decoration:none}
+.eski-omo{display:inline-flex;align-items:center;gap:6px;font-size:13px;margin-top:8px}
+.eski-omo .ms{font-size:17px}
+@media (max-width:720px){.zaman-panel{left:10px;right:10px;width:auto}}
+body.panel-open .zaman-panel,body.navigating .zaman-panel,body.dir-open .zaman-panel{display:none}
+body.zaman-acik .eski-bar{bottom:calc(268px + var(--safe-b,0px))}

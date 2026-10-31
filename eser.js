@@ -6,6 +6,7 @@
 'use strict';
 
 const ESER_URL = '/data/heritage/kulturenvanteri.json';
+const TARIH_URL = '/data/heritage/tarih.json'; // tools/build_tarih.py
 const HAKKINDA_URL = '/data/heritage/hakkinda.json'; // kişisel gezi notları (tools/build_mymaps.py): eşleşen eserlere metin + yeni eserler
 // Aile sırası veri dosyasındaki "aile" dizisiyle aynıdır
 const ESER_AILE = [
@@ -44,8 +45,10 @@ const eser = { on: false, data: null, loading: null, kapali: new Set(), secili: 
 function eserYukle() {
   if (eser.loading) return eser.loading;
   const hk = fetch(HAKKINDA_URL).then(r => r.ok ? r.json() : null).catch(() => null); // yoksa katman yine çalışır
-  eser.loading = Promise.all([fetch(ESER_URL).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }), hk]).then(([d, H]) => {
+  const tk = fetch(TARIH_URL).then(r => r.ok ? r.json() : null).catch(() => null);   // zaman kaydırıcısı için yapım yılları
+  eser.loading = Promise.all([fetch(ESER_URL).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }), hk, tk]).then(([d, H, T]) => {
     eser.hakkinda = H?.ke || {};
+    const keSay = d.eser.length;
     // Kişisel haritadaki yeni eserler aynı satır biçimine eklenir: [14] tür adı, [15] katman (bölge), [16] gezi notu
     (H?.yeni || []).forEach((y, k) => d.eser.push([`m${k}`, y.ad, y.lon, y.lat, '', [], [], [], 0, 0, [], 0, '', y.aile, y.tur, y.katman, y]));
     const S = d.sozluk, tur = S.tur, durum = S.durum;
@@ -58,8 +61,11 @@ function eserYukle() {
       sayi[e[13]]++;
       feats[i] = { type: 'Feature', geometry: { type: 'Point', coordinates: [e[2], e[3]] },
         properties: { i, n: e[1], img: `eser-${kilise ? 'kilise' : e[13]}${bos ? '-b' : ''}`, f: e[13] } };
+      // y: yapım yılı (aralıklıysa aralık içinde sabit nokta), k: kesinlik 0 kesin / 1 dönem / 2 tahmin; tarihsizde ikisi de yok
+      const t = T && (i < keSay ? T.ke[i] : T.m[i - keSay]);
+      if (t) { feats[i].properties.y = t[0]; feats[i].properties.k = t[1]; }
     });
-    eser.data = { ...d, feats, sayi };
+    eser.data = { ...d, feats, sayi, tarih: T, keSay };
     return eser.data;
   }).catch(err => { eser.loading = null; throw err; });
   return eser.loading;
@@ -146,6 +152,7 @@ async function setEser(on) {
   $('eser-btn').classList.toggle('on', on); $('eser-btn').setAttribute('aria-pressed', on);
   document.body.classList.toggle('eser-acik', on);
   if (!on) {
+    if (typeof zamanKapat === 'function') zamanKapat();
     eserGorunur(false); $('eser-bar').hidden = true; eserSecimGoster(null);
     applyBasemap(); // haritanın etiketleri geri gelir
     if (typeof applyTerrainOpts === 'function') applyTerrainOpts();
@@ -174,7 +181,8 @@ async function setEser(on) {
 const eserKisa = n => n >= 1000 ? nf1.format(n / 1000) + ' B' : String(n);
 function eserBarCiz() {
   const bar = $('eser-bar'), s = eser.data.sayi;
-  bar.innerHTML = ESER_AILE.map((a, i) => `<button class="eser-chip${eser.kapali.has(i) ? ' kapali' : ''}" data-f="${i}" style="--c:${a.renk}" aria-pressed="${!eser.kapali.has(i)}"><i></i>${a.ad}<small>${eserKisa(s[i])}</small></button>`).join('');
+  bar.innerHTML = `<button class="eser-chip zaman-chip${typeof zaman !== 'undefined' && zaman.acik ? ' on' : ''}" id="zaman-chip"><span class="ms">history</span>Zaman</button>` + ESER_AILE.map((a, i) => `<button class="eser-chip${eser.kapali.has(i) ? ' kapali' : ''}" data-f="${i}" style="--c:${a.renk}" aria-pressed="${!eser.kapali.has(i)}"><i></i>${a.ad}<small>${eserKisa(s[i])}</small></button>`).join('');
+  $('zaman-chip').onclick = () => zamanAcKapat();
   bar.querySelectorAll('[data-f]').forEach(b => {
     b.onclick = () => {
       const f = +b.dataset.f;
@@ -234,6 +242,14 @@ function eserNotHtml(n, eserAd) {
     <div class="eser-not-alan">${satir('history_edu', 'Dönem', n.donem)}${satir('event', 'Tarih', n.tarih)}${satir('person', 'Müellif', muellif)}${satir('tag', 'Mezar no', n.kv)}</div>
     ${metin}</section>`;
 }
+// Yüzyılı olmayan eserde tarih: dönemden ya da tür/ülke tahmininden (zaman kaydırıcısıyla aynı veri)
+function eserTarihEtiket(e) {
+  const T = eser.data.tarih; if (!T) return ['Tarih', ''];
+  const i = eser.data.eser.indexOf(e), t = i < eser.data.keSay ? T.ke[i] : T.m[i - eser.data.keSay];
+  if (!t) return ['Tarih', ''];
+  const [bas, son, ad] = T.aralik[t[2]], yy = y => y < 0 ? `MÖ ${-y}` : String(y);
+  return [t[1] === 2 ? 'Tarih (tahmini)' : t[1] === 1 ? 'Dönem' : 'Tarih', `${ad}${bas !== son ? ` · ${yy(bas)}–${yy(son)}` : ''}`];
+}
 function eserKart(el, p, e, a, turler) {
   const S = eser.data.sozluk;
   const kultur = (e[6] || []).map(k => S.kultur[k]).filter(x => x && x !== '?');
@@ -257,7 +273,7 @@ function eserKart(el, p, e, a, turler) {
     </div>
     <div class="info">
       ${satir('history_edu', 'Kültür', kultur.join(', '))}
-      ${satir('schedule', 'Yüzyıl', yuzyil.join(', '))}
+      ${yuzyil.length ? satir('schedule', 'Yüzyıl', yuzyil.join(', ')) : satir('schedule', eserTarihEtiket(e)[0], eserTarihEtiket(e)[1])}
       ${satir('location_on', 'Konum', yer)}
     </div>
     ${notlar.map(n => eserNotHtml(n, e[1])).join('')}`;

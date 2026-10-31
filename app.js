@@ -1137,7 +1137,7 @@ function wireMap() {
   map.on('mousemove', e => {
     if (measuring) { map.getCanvas().style.cursor = 'crosshair'; return; }
     if (navActive) return;
-    map.getCanvas().style.cursor = map.queryRenderedFeatures(e.point).some(f => isLabel(f) || f.layer.id === 'eser-nokta' || f.layer.id === 'eser-kume') ? 'pointer' : '';
+    map.getCanvas().style.cursor = map.queryRenderedFeatures(e.point).some(f => isLabel(f) || f.layer.id === 'eser-nokta' || f.layer.id === 'eser-yogun') ? 'pointer' : '';
   });
   map.on('contextmenu', e => { e.preventDefault(); showCtx(e.point, e.lngLat); });
   // Mobilde uzun basma = bağlam menüsü

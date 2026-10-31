@@ -1,5 +1,6 @@
 // ATLAS3D — Tarihî eser katmanı: Kültür Envanteri'nden derlenen ~84 bin eser 2D haritada.
-// Eserler İznik çinisi renklerinde sekizgen mühürlerle, kümeler Selçuklu sekiz köşeli yıldızıyla gösterilir.
+// Uzaktan eser yoğunluğu firuze lekeler olarak görünür (Kültür Envanteri'ndeki gibi); yakınlaşınca
+// İznik çinisi renklerinde sekizgen mühürlere dönüşür.
 // Kayıp, toprak altında ya da su altındaki eserlerin mührü içi boş çizilir.
 // Veri yalnızca düğmeye ilk basıldığında bir kez indirilir (data/heritage/kulturenvanteri.json, tools/build_ke.py üretir).
 'use strict';
@@ -19,7 +20,8 @@ const ESER_AILE = [
 ];
 const ESER_KILISE = new Set(['Kilise', 'Katedral', 'Bazilika', 'Manastır', 'Şapel']);
 const ESER_BOS = new Set(['Kayıp', 'Toprak Altında', 'Su Altında']); // içi boş mühür
-const ESER_LAYERS = ['eser-tul', 'eser-kume', 'eser-nokta', 'eser-secim'];
+const ESER_LAYERS = ['eser-tul', 'eser-hale', 'eser-yogun', 'eser-nokta', 'eser-secim'];
+const ESER_YOGUN = '#3f979e', ESER_HALE = '#c9dbf6'; // Kültür Envanteri'nin yoğunluk görünümü: firuze leke, açık mavi hare
 
 const eser = { on: false, data: null, loading: null, kapali: new Set(), secili: null, prev: null };
 
@@ -72,24 +74,11 @@ function muhur(renk, simge, bos) {
   else { g.fillStyle = ink; g.font = `${15 * ESER_PR}px "Material Symbols Outlined"`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(simge, m, m + 0.5 * ESER_PR); }
   return { width: S, height: S, data: g.getImageData(0, 0, S, S).data };
 }
-function yildiz(dark) { // Selçuklu sekiz köşeli yıldızı: iç içe iki kare
-  const S = 44 * ESER_PR, c = document.createElement('canvas'); c.width = c.height = S;
-  const g = c.getContext('2d'), m = S / 2, r = 19 * ESER_PR;
-  const kare = (rot, rr) => { g.beginPath(); for (let k = 0; k < 4; k++) { const a = rot + k * Math.PI / 2; g.lineTo(m + rr * Math.cos(a), m + rr * Math.sin(a)); } g.closePath(); };
-  g.shadowColor = 'rgba(40,28,10,.35)'; g.shadowBlur = 4 * ESER_PR; g.shadowOffsetY = ESER_PR;
-  g.fillStyle = dark ? '#2a2620' : '#fbf5e6';
-  kare(0, r); g.fill(); kare(Math.PI / 4, r); g.fill();
-  g.shadowColor = 'transparent'; g.lineWidth = 1.6 * ESER_PR; g.strokeStyle = '#a87412';
-  kare(0, r - ESER_PR); g.stroke(); kare(Math.PI / 4, r - ESER_PR); g.stroke();
-  g.beginPath(); g.arc(m, m, 11.5 * ESER_PR, 0, Math.PI * 2); g.lineWidth = ESER_PR; g.strokeStyle = 'rgba(168,116,18,.55)'; g.stroke();
-  return { width: S, height: S, data: g.getImageData(0, 0, S, S).data };
-}
 async function eserGorseller() {
   try { await document.fonts.load(`${15 * ESER_PR}px "Material Symbols Outlined"`, 'mosque'); } catch {}
   const add = (id, img) => { if (map.hasImage(id)) map.removeImage(id); map.addImage(id, img, { pixelRatio: ESER_PR }); };
   ESER_AILE.forEach((a, i) => { add(`eser-${i}`, muhur(a.renk, a.simge, false)); add(`eser-${i}-b`, muhur(a.renk, a.simge, true)); });
   add('eser-kilise', muhur(ESER_AILE[0].renk, 'church', false)); add('eser-kilise-b', muhur(ESER_AILE[0].renk, 'church', true));
-  add('eser-yildiz', yildiz(isDark()));
 }
 
 /* ----- Katmanlar ----- */
@@ -103,17 +92,24 @@ async function eserKatmanlar() {
   // Parşömen tülü: altlığı soldurur, işaretler öne çıkar; yer adları tülün üstünde kalır
   map.addSource('eser-tul', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]]] } } });
   const firstSymbol = map.getStyle().layers.find(l => l.type === 'symbol' && !OWN.has(l.id))?.id;
-  map.addLayer({ id: 'eser-tul', type: 'fill', source: 'eser-tul', paint: { 'fill-color': isDark() ? '#16130e' : '#f4ead2', 'fill-opacity': basemap === 'satellite' ? 0.22 : 0.5 } }, firstSymbol);
-  map.addSource('eser', { type: 'geojson', data: eserVeri(), cluster: true, clusterMaxZoom: 14, clusterRadius: 50, buffer: 32 });
-  map.addLayer({ id: 'eser-kume', type: 'symbol', source: 'eser', filter: ['has', 'point_count'],
-    layout: { 'icon-image': 'eser-yildiz', 'icon-size': ['step', ['get', 'point_count'], 0.72, 50, 0.86, 500, 1, 5000, 1.16], 'icon-allow-overlap': true, 'text-allow-overlap': true,
-      'text-field': ['to-string', ['get', 'point_count']], 'text-font': ['Noto Sans Bold'], 'text-size': ['step', ['get', 'point_count'], 11, 500, 12, 5000, 13] },
-    paint: { 'text-color': isDark() ? '#f3e6c4' : '#4a3410' } });
+  map.addLayer({ id: 'eser-tul', type: 'fill', source: 'eser-tul', paint: { 'fill-color': isDark() ? '#16130e' : '#f4ead2', 'fill-opacity': basemap === 'satellite' ? 0 : 0.4 } }, firstSymbol);
+  map.addSource('eser', { type: 'geojson', data: eserVeri(), buffer: 16, maxzoom: 14 });
+  // Uzaktan yoğunluk: her eser firuze bir leke; üst üste binenler tek alana kaynaşır, açık mavi bir hare çevreler.
+  // Önce hare (biraz büyük), üstüne dolgu çizilir: iç kenarlar örtülür, yalnızca dış sınır kalır.
+  // Yakınlaştırma ifadesi en dışta olmalı: hare yarıçapı ayrı tanımlanır
+  const yaricap = ek => ['interpolate', ['exponential', 1.6], ['zoom'], 2, 2.2 + ek, 5, 3.8 + ek, 8, 5.5 + ek, 11, 7 + ek, 13, 8 + ek];
+  const R = yaricap(0);
+  const fade = (a, b) => ['interpolate', ['linear'], ['zoom'], 11.6, a, 13, b];
+  map.addLayer({ id: 'eser-hale', type: 'circle', source: 'eser', maxzoom: 13.2,
+    paint: { 'circle-radius': yaricap(2.6), 'circle-color': ESER_HALE, 'circle-opacity': fade(0.95, 0), 'circle-pitch-alignment': 'map' } });
+  map.addLayer({ id: 'eser-yogun', type: 'circle', source: 'eser', maxzoom: 13.2,
+    paint: { 'circle-radius': R, 'circle-color': ESER_YOGUN, 'circle-opacity': fade(1, 0), 'circle-pitch-alignment': 'map' } });
   map.addLayer({ id: 'eser-secim', type: 'circle', source: 'eser-secim-src', paint: { 'circle-radius': 19, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-width': 2.5, 'circle-stroke-color': '#a87412' } });
-  map.addLayer({ id: 'eser-nokta', type: 'symbol', source: 'eser', filter: ['!', ['has', 'point_count']],
-    layout: { 'icon-image': ['get', 'img'], 'icon-size': ['interpolate', ['linear'], ['zoom'], 5, 0.5, 12, 0.7, 15, 0.9, 18, 1.1], 'icon-allow-overlap': true, 'icon-padding': 0,
+  // Yakından: mühürler (çakışanlar gizlenir, yakınlaştıkça hepsi görünür)
+  map.addLayer({ id: 'eser-nokta', type: 'symbol', source: 'eser', minzoom: 11.6,
+    layout: { 'icon-image': ['get', 'img'], 'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.72, 15, 0.9, 18, 1.1], 'icon-padding': 0, 'icon-allow-overlap': false,
       'text-field': ['step', ['zoom'], '', 14.5, ['get', 'n']], 'text-font': ['Noto Sans Regular'], 'text-size': 11.5, 'text-offset': [0, 1.5], 'text-anchor': 'top', 'text-optional': true, 'text-max-width': 9 },
-    paint: { 'text-color': isDark() ? '#efe3c8' : '#3b2a12', 'text-halo-color': isDark() ? 'rgba(20,17,12,.9)' : 'rgba(251,245,230,.95)', 'text-halo-width': 1.6 } });
+    paint: { 'icon-opacity': fade(0, 1), 'text-color': isDark() ? '#efe3c8' : '#3b2a12', 'text-halo-color': isDark() ? 'rgba(20,17,12,.9)' : 'rgba(251,245,230,.95)', 'text-halo-width': 1.6 } });
   ESER_LAYERS.forEach(id => OWN.add(id));
 }
 function eserTemaUygula() { // tema değişince tül ve yazı renkleri
@@ -121,10 +117,8 @@ function eserTemaUygula() { // tema değişince tül ve yazı renkleri
   const d = isDark();
   map.setPaintProperty('eser-tul', 'fill-color', d ? '#16130e' : '#f4ead2');
   map.setPaintProperty('eser-tul', 'fill-opacity', basemap === 'satellite' ? 0.22 : 0.5);
-  map.setPaintProperty('eser-kume', 'text-color', d ? '#f3e6c4' : '#4a3410');
   map.setPaintProperty('eser-nokta', 'text-color', d ? '#efe3c8' : '#3b2a12');
   map.setPaintProperty('eser-nokta', 'text-halo-color', d ? 'rgba(20,17,12,.9)' : 'rgba(251,245,230,.95)');
-  const img = yildiz(d); if (map.hasImage('eser-yildiz')) map.updateImage('eser-yildiz', img);
 }
 function eserGorunur(on) {
   ESER_LAYERS.forEach(id => map.getLayer(id) && map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'));
@@ -186,10 +180,11 @@ function eserBarCiz() {
 function eserTikla(e) {
   if (!eser.on || !map.getLayer('eser-nokta')) return false;
   const box = [[e.point.x - 10, e.point.y - 10], [e.point.x + 10, e.point.y + 10]];
-  const f = map.queryRenderedFeatures(box, { layers: ['eser-kume', 'eser-nokta'] })[0];
+  const z = map.getZoom();
+  const f = map.queryRenderedFeatures(box, { layers: z >= 12.4 ? ['eser-nokta'] : ['eser-yogun'] })[0];
   if (!f) return false;
-  if (f.properties.cluster) {
-    map.getSource('eser').getClusterExpansionZoom(f.properties.cluster_id).then(z => map.easeTo({ center: f.geometry.coordinates, zoom: Math.min(z + 0.3, 18), duration: 600 })).catch(() => {});
+  if (z < 12.4) { // yoğunluk alanına dokunuldu: o bölgeye yakınlaş
+    map.easeTo({ center: e.lngLat, zoom: Math.min(Math.max(z + 3, 9), 13.6), duration: 700 });
     return true;
   }
   eserGoster(f.properties.i);

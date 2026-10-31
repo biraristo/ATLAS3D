@@ -14,6 +14,7 @@ Telefonda uygulama gibi kurulabilen (PWA) **3D** harita. Rakım ve eğim analizi
 - **Navigasyon:** sesli yönlendirme, rotadan çıkınca yeniden hesaplama, anlık rakım/eğim, dik yokuş uyarısı, anlık yakıt tüketimi (GPS hızı, hızlanma ve eğimden), harcanan yakıt, yakıt ücreti ve geçilen gişelerle birlikte toplam maliyet, hız önerisi ve yolculuk sonu özeti
 - **Arazi analizi:** eğim haritası, eş yükselti eğrileri, merkez/imleç rakım-eğim göstergesi
 - **Menü:** Araçlarım (birden fazla araç; katalogdan seçim ya da elle giriş, depo hacmi, isteğe bağlı fiyat; 100 km maliyeti ve depo menzili; **yakıt alımları**: depo dolu → depo dolu kayıtlarından gerçek ortalama hesaplanır, hesaplar araca ve sürücüye göre düzeltilir, belirsizlik aralığı daralır), yolculuk geçmişi (aylık km, yakıt ve maliyet toplamı), akaryakıt fiyatları (EPDK), ev ve iş (tek dokunuşla yol tarifi, aramada öneri), aracın yakıtına göre yakındaki benzinlik/şarj istasyonları, ulaşılabilir alan
+- **Tarihî eser:** üst çubuktaki düğmeyle ~84 bin eser 2D haritada; aileye göre renkli sekizgen mühürler (dinî, türbe/anıt, kale, antik, çeşme/hamam, han/çarşı, sivil, köprü), sekiz köşeli yıldız kümeleri, aile filtresi; kayıp / toprak altı / su altı eserler içi boş mühür. Kartta tür, kültür, dönem, konum, yol tarifi ve Kültür Envanteri bağlantısı
 - **Görünüm:** varsayılan aydınlık; menüden Aydınlık / Koyu / Sistem seçilebilir; koyu temada arayüz ve harita renkleri birlikte koyulaşır
 - **Araçlar:** mesafe ölçme ve arazi kesiti, rotanın 3D kuş bakışı önizlemesi, sağ tık/uzun basma menüsü
 
@@ -44,6 +45,15 @@ python3 tools/build_vehicles.py # model adlarını temizler, birleştirir ve mar
 Her motor seçeneğinde boş ağırlık, motor hacmi, güç, güç aktarımı ve resmî tüketim (2021+ WLTP, öncesi NEDC CO₂'den karbon dengesiyle) vardır. Değerler EEA kaydından gelir; yalnızca model adları birleştirilir. Türkiye'ye özgü adlar açıkça eşleştirilir (Egea = Tipo; Taliant = Logan III ile aynı taban ve motorlar).
 
 Tüketim modeli ve sınırları: test döngüsü ile yol arasındaki ölçülemeyen fark için WLTP'de %8–12, NEDC'de %12–20 sabit pay eklenir (ICCT "From laboratory to road" bulgularına göre; hız, klima ve soğuk çalıştırma payı ayrıca modellendiği için toplam farkın tamamı değildir). Vites, şanzıman türü ve lastik ebadı veride olmadığı için modellenmez; bu fark yakıt alımlarından öğrenilen kişisel katsayıyla kapanır. Şarj edilebilir hibritte batarya boşken tüketim için resmî veri yoktur, hibrit fiziğinden tahmin edilir (aralık daha geniştir).
+
+## Tarihî eser verisi
+
+`data/heritage/kulturenvanteri.json` Kültür Envanteri'nin (kulturenvanteri.com) yer kayıtlarından derlenir: ad, koordinat, tür, kültür, yüzyıl, durum ve konum. Açıklama metinleri ve fotoğraflar alınmaz; kart eserin Kültür Envanteri sayfasına bağlantı verir. Yeniden üretmek için:
+
+```
+python3 tools/fetch_ke.py tools/.cache/ke   # istekler arasında 1,5 sn bekler, kaldığı yerden devam eder (~45 dk)
+python3 tools/build_ke.py tools/.cache/ke data/heritage/kulturenvanteri.json
+```
 
 ## Notlar
 - Yükseklik verisi yaklaşık 30 m çözünürlüklü bir arazi modelinden gelir. Köprü ve tünellerde gerçek yol eğiminden sapabilir (araç rotalarında otomatik düzeltilir).

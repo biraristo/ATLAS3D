@@ -837,3 +837,52 @@ body.navigating.fuel-on .qlayers{bottom:calc(205px + var(--safe-b))}
 
 /* İzometrik görünüm: düşük çözünürlükte çizilen harita yumuşatılmadan büyütülür (piksel sanatı) */
 body.iso #map canvas{image-rendering:pixelated}
+
+/* ================= Tarihî eser katmanı ================= */
+/* Düğme: Harita / Uydu ile aynı boyda; açıkken İznik kırmızısı */
+.eser-btn{flex:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px 0 10px;border:0;border-radius:18px;background:none;font:inherit;font-size:13.5px;font-weight:500;color:var(--text-2);cursor:pointer;white-space:nowrap}
+.eser-btn .ms{font-size:19px;color:var(--muted)}
+.eser-btn:hover{background:var(--surface-3)}
+.eser-btn.on{background:#f7e4df;color:#9a2b22}.eser-btn.on .ms{color:#9a2b22;font-variation-settings:'FILL' 1}
+.eser-btn.yukleniyor .ms{animation:eserNabiz 1s ease-in-out infinite}
+@keyframes eserNabiz{50%{opacity:.35}}
+:root[data-theme="dark"] .eser-btn.on{background:#43231f;color:#f4b6aa}:root[data-theme="dark"] .eser-btn.on .ms{color:#f4b6aa}
+
+/* Aile filtresi: üst çubuğun hemen altında yatay kayan şerit */
+.eser-bar{position:fixed;z-index:14;top:calc(66px + var(--safe-t));left:408px;right:12px;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px 2px 8px;transition:left .2s}
+.eser-bar::-webkit-scrollbar{display:none}
+body.panel-open .eser-bar{left:calc(var(--panel-w) + 12px)}
+body.panel-collapsed .eser-bar{left:408px}
+.eser-chip{flex:none;height:32px;border:0;border-radius:16px;background:var(--bg);box-shadow:var(--shadow);display:inline-flex;align-items:center;gap:7px;padding:0 12px 0 9px;font:inherit;font-size:13px;font-weight:500;color:var(--text-2);cursor:pointer;white-space:nowrap}
+.eser-chip i{width:13px;height:13px;background:var(--c);clip-path:polygon(29% 0,71% 0,100% 29%,100% 71%,71% 100%,29% 100%,0 71%,0 29%)}
+.eser-chip small{color:var(--muted);font-size:12px;font-weight:400}
+.eser-chip.kapali{color:var(--muted);box-shadow:0 0 0 1px var(--line)}
+.eser-chip.kapali i{background:none;box-shadow:inset 0 0 0 2px var(--c);opacity:.6}
+.eser-chip:focus-visible,.eser-btn:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+
+/* Kart: başlıkta ailenin renginde çini deseni ve ortada krem mühür */
+.eser-hero{height:124px;display:flex;align-items:center;justify-content:center;background-color:var(--c);
+  background-image:radial-gradient(circle,rgba(251,245,230,.22) 0 3px,transparent 3.5px),
+    conic-gradient(from 45deg,rgba(255,255,255,.09) 0 25%,transparent 0 50%,rgba(255,255,255,.09) 0 75%,transparent 0),
+    radial-gradient(circle,transparent 0 12px,rgba(251,245,230,.14) 12.5px 13.5px,transparent 14px);
+  background-size:30px 30px,30px 30px,30px 30px;background-position:15px 15px,0 0,0 0}
+.eser-muhur{width:74px;height:74px;display:flex;align-items:center;justify-content:center;background:#fbf5e6;color:var(--c);clip-path:polygon(29% 0,71% 0,100% 29%,100% 71%,71% 100%,29% 100%,0 71%,0 29%);box-shadow:inset 0 0 0 3px color-mix(in srgb,var(--c) 35%,#fbf5e6)}
+.eser-muhur .ms{font-size:38px}
+.eser-ad{font-family:Alegreya,Georgia,serif;font-weight:500;font-size:26px!important;line-height:1.2!important;letter-spacing:.005em}
+.eser-aka{font-family:Alegreya,Georgia,serif;font-style:italic;font-size:16px;color:var(--muted);margin:-2px 0 6px}
+.eser-turler{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 2px}
+.eser-turler span{font-size:12.5px;font-weight:500;padding:3px 9px;border-radius:6px;color:var(--c);background:color-mix(in srgb,var(--c) 11%,var(--bg))}
+.eser-turler .eser-durum{color:#a1281d;background:#fdecea}
+:root[data-theme="dark"] .eser-turler span{color:color-mix(in srgb,var(--c) 45%,#fff);background:color-mix(in srgb,var(--c) 28%,var(--bg))}
+:root[data-theme="dark"] .eser-turler .eser-durum{color:#f6aea4;background:#4a2220}
+.eser-row{display:flex;gap:22px;align-items:flex-start;padding:9px 24px}
+.eser-row .ms{color:var(--muted);font-size:22px;margin-top:6px}
+.eser-row small,.eser-alt{display:block;color:var(--muted);font-size:12px;line-height:1.3}
+.eser-row small{margin-bottom:1px}
+
+@media (max-width:720px){
+  .eser-bar{left:0!important;right:0;top:calc(116px + var(--safe-t));padding:2px 10px 8px}
+  body.sheet-full .eser-bar,body.sheet-high .eser-bar{visibility:hidden}
+  .eser-btn{padding:0 12px 0 9px}
+}
+body.navigating .eser-bar,body.dir-open .eser-bar,body.flying .eser-bar{display:none!important}

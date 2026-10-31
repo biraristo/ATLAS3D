@@ -83,6 +83,7 @@ function applyMapTheme() {
   try { map.setSky(dark ? DARK_SKY : LIGHT_SKY); } catch {}
   if (map.getLayer('a3-slope')) map.setPaintProperty('a3-slope', 'raster-opacity', dark ? 0.5 : 0.8); // koyu zeminde eğim renkleri baskın olmasın
   if (isoOn) applyIsoStyle();
+  if (typeof eserTemaUygula === 'function') eserTemaUygula();
 }
 function setTheme(pref) {
   themePref = pref; store.set('theme', pref); setThemeAttr(); applyMapTheme();
@@ -331,6 +332,7 @@ function applyBasemap() {
   map.setLayoutProperty('a3-satroads', 'visibility', sat && opts.labels && !isoOn ? 'visible' : 'none');
   map.setLayoutProperty('a3-hillshade', 'visibility', sat ? 'none' : 'visible');
   if (!isoOn) map.setPaintProperty('a3-hillshade', 'hillshade-exaggeration', HS_EXAG(0.75));
+  if (typeof eserTemaUygula === 'function') eserTemaUygula(); // tarihî eser tülü uyduda daha ince
   applyIsoStyle(); // izometrikte altlık değişince bina renkleri uyduya / haritaya göre ayarlanır
   // Katman düğmesinde "diğer" seçenek görünür
   const other = sat ? 'terrain' : 'satellite';
@@ -770,6 +772,7 @@ function closePanel() {
   body.classList.remove('panel-open', 'dir-open', 'panel-collapsed', 'sheet-full');
   $('panel-collapse').hidden = true;
   clearPlaceMarker(); clearResultMarkers(); setActiveChip(null);
+  if (typeof eserSecimGoster === 'function' && map) eserSecimGoster(null);
   setSheet('peek');
 }
 $('panel-close').onclick = () => { closePanel(); qInput.value = ''; syncClear(); };
@@ -1113,6 +1116,7 @@ function wireMap() {
     hideCtx(); $('layers-pop').hidden = true;
     if (measuring) { addMeasurePoint([e.lngLat.lng, e.lngLat.lat]); return; }
     if (navActive) return;
+    if (typeof eserTikla === 'function' && eserTikla(e)) return; // tarihî eser mührü ya da kümesi
     // Haritadaki bir yere (POI / yer adı) tıklandı mı?
     const feats = map.queryRenderedFeatures([[e.point.x - 6, e.point.y - 6], [e.point.x + 6, e.point.y + 6]]).filter(isLabel);
     if (feats.length && panelMode !== 'dir') {
@@ -1133,7 +1137,7 @@ function wireMap() {
   map.on('mousemove', e => {
     if (measuring) { map.getCanvas().style.cursor = 'crosshair'; return; }
     if (navActive) return;
-    map.getCanvas().style.cursor = map.queryRenderedFeatures(e.point).some(isLabel) ? 'pointer' : '';
+    map.getCanvas().style.cursor = map.queryRenderedFeatures(e.point).some(f => isLabel(f) || f.layer.id === 'eser-nokta' || f.layer.id === 'eser-kume') ? 'pointer' : '';
   });
   map.on('contextmenu', e => { e.preventDefault(); showCtx(e.point, e.lngLat); });
   // Mobilde uzun basma = bağlam menüsü

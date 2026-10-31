@@ -1,12 +1,12 @@
 // ATLAS3D service worker: uygulama kabuğu ve harita karoları için önbellek.
 // Kabuk dosyaları "önce ağ" ile gelir (güncellemeler hemen yansır), çevrimdışıyken önbellekten açılır.
 // Harita/arazi karoları "önce önbellek" ile gelir: gezilen bölgeler hızlı ve çevrimdışı da açılır.
-const VERSION = 'v13'; // kabuk dosya listesi değişince artırın: eski önbellekler silinir
+const VERSION = 'v14'; // kabuk dosya listesi değişince artırın: eski önbellekler silinir
 const SHELL = 'atlas3d-shell-' + VERSION;
 const LIBS = 'atlas3d-libs-' + VERSION;
 const TILES = 'atlas3d-tiles-' + VERSION;
 const TILE_LIMIT = 2500;
-const SHELL_FILES = ['/', '/style.css', '/app.js', '/terrain.js', '/analysis.js', '/tolls.js', '/ferries.js', '/traffic.js', '/cycles.js', '/fuel.js', '/vehicles.js', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
+const SHELL_FILES = ['/', '/style.css', '/app.js', '/terrain.js', '/analysis.js', '/tolls.js', '/ferries.js', '/traffic.js', '/cycles.js', '/fuel.js', '/vehicles.js', '/eser.js', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(SHELL).then(c => c.addAll(SHELL_FILES.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));

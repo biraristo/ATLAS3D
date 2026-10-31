@@ -136,6 +136,7 @@ async function setEser(on) {
   document.body.classList.toggle('eser-acik', on);
   if (!on) {
     eserGorunur(false); $('eser-bar').hidden = true; eserSecimGoster(null);
+    applyBasemap(); // haritanın etiketleri geri gelir
     if (typeof applyTerrainOpts === 'function') applyTerrainOpts();
     if (eser.prev) map.easeTo({ pitch: eser.prev.pitch, bearing: eser.prev.bearing, duration: 700 });
     if (panelMode === 'place' && currentPlace?.eser != null) closePanel();
@@ -155,7 +156,7 @@ async function setEser(on) {
   }
   if (!map.getSource('eser-secim-src')) map.addSource('eser-secim-src', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
   await eserKatmanlar();
-  eserGorunur(true); eserTemaUygula(); eserBarCiz(); $('eser-bar').hidden = false;
+  eserGorunur(true); applyBasemap(); eserBarCiz(); $('eser-bar').hidden = false; // applyBasemap: harita etiketlerini gizler
 }
 
 /* ----- Filtre şeridi ----- */

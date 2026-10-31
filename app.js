@@ -319,7 +319,9 @@ function applyBasemap() {
   for (const id of styleLayerIds) {
     const l = map.getLayer(id); if (!l) continue;
     let vis = baseVisibility[id];
-    if (l.type === 'symbol') vis = opts.labels ? vis : 'none';
+    // Tarihî eser açıkken haritanın kendi etiketleri gizlenir: yalnızca eserler görünür (Etiketler tiki değişmez)
+    const eserAcik = typeof eser !== 'undefined' && eser.on;
+    if (l.type === 'symbol') vis = opts.labels && !eserAcik ? vis : 'none';
     else if (l.type === 'background') vis = 'visible';
     else if (sat) vis = 'none';
     if (isoOn && l.type === 'symbol' && !ISO_LABEL.test(id)) vis = 'none';
@@ -329,7 +331,7 @@ function applyBasemap() {
     map.setLayoutProperty(id, 'visibility', vis);
   }
   map.setLayoutProperty('a3-sat', 'visibility', sat ? 'visible' : 'none');
-  map.setLayoutProperty('a3-satroads', 'visibility', sat && opts.labels && !isoOn ? 'visible' : 'none');
+  map.setLayoutProperty('a3-satroads', 'visibility', sat && opts.labels && !isoOn && !(typeof eser !== 'undefined' && eser.on) ? 'visible' : 'none');
   map.setLayoutProperty('a3-hillshade', 'visibility', sat ? 'none' : 'visible');
   if (!isoOn) map.setPaintProperty('a3-hillshade', 'hillshade-exaggeration', HS_EXAG(0.75));
   if (typeof eserTemaUygula === 'function') eserTemaUygula(); // tarihî eser tülü uyduda daha ince

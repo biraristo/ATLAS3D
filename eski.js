@@ -114,7 +114,7 @@ function eskiCubukCiz() {
       <button class="icon-btn" id="eb-kapat" aria-label="Eski haritayı kapat"><span class="ms">close</span></button>
     </div>
     ${raster ? `<div class="eb-satir"><span class="ms">opacity</span><input type="range" id="eb-saydam" min="0" max="100" value="${Math.round(eski.saydam * 100)}" aria-label="Saydamlık"><button class="eb-kars${eski.gizli ? ' on' : ''}" id="eb-kars">${eski.gizli ? 'Eskiyi göster' : 'Bugüne bak'}</button></div>` : ''}
-    ${eski.sinir ? `<div class="eb-satir"><span class="ms">history</span><input type="range" id="eb-yil" min="-1500" max="2020" step="10" value="${atlasYil}" aria-label="Sınır yılı"><b class="eb-yil">${yilYaz(atlasYil)}</b></div>` : ''}`;
+    ${eski.sinir ? `<div class="eb-satir"><span class="ms">history</span><input type="range" id="eb-yil" min="-3000" max="2020" step="10" value="${atlasYil}" aria-label="Sınır yılı"><b class="eb-yil">${yilYaz(atlasYil)}</b></div>` : ''}`;
   $('eb-liste').onclick = () => eskiPanel();
   $('eb-kapat').onclick = () => { if (h) eskiHaritaKapat(); else if (eski.roma) eskiRoma(false); else eskiSinir(false); };
   const s = $('eb-saydam'); if (s) s.oninput = () => { eski.gizli = false; eskiSaydam(s.value / 100); $('eb-kars').classList.remove('on'); $('eb-kars').textContent = 'Bugüne bak'; };

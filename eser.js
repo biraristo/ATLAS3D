@@ -181,8 +181,11 @@ async function setEser(on) {
 const eserKisa = n => n >= 1000 ? nf1.format(n / 1000) + ' B' : String(n);
 function eserBarCiz() {
   const bar = $('eser-bar'), s = eser.data.sayi;
-  bar.innerHTML = `<button class="eser-chip zaman-chip${typeof zaman !== 'undefined' && zaman.acik ? ' on' : ''}" id="zaman-chip"><span class="ms">history</span>Zaman</button>` + ESER_AILE.map((a, i) => `<button class="eser-chip${eser.kapali.has(i) ? ' kapali' : ''}" data-f="${i}" style="--c:${a.renk}" aria-pressed="${!eser.kapali.has(i)}"><i></i>${a.ad}<small>${eserKisa(s[i])}</small></button>`).join('');
+  bar.innerHTML = `<button class="eser-chip zaman-chip${typeof zaman !== 'undefined' && zaman.acik ? ' on' : ''}" id="zaman-chip"><span class="ms">history</span>Zaman</button>`
+    + `<button class="eser-chip arac-chip" id="gunluk-chip"><span class="ms">where_to_vote</span>Günlüğüm</button><button class="eser-chip arac-chip" id="yakin-chip"><span class="ms">near_me</span>Yakınımda</button>` + ESER_AILE.map((a, i) => `<button class="eser-chip${eser.kapali.has(i) ? ' kapali' : ''}" data-f="${i}" style="--c:${a.renk}" aria-pressed="${!eser.kapali.has(i)}"><i></i>${a.ad}<small>${eserKisa(s[i])}</small></button>`).join('');
   $('zaman-chip').onclick = () => zamanAcKapat();
+  $('gunluk-chip').onclick = () => gunlukPanel();
+  $('yakin-chip').onclick = () => yakinPanel();
   bar.querySelectorAll('[data-f]').forEach(b => {
     b.onclick = () => {
       const f = +b.dataset.f;
@@ -276,7 +279,9 @@ function eserKart(el, p, e, a, turler) {
       ${yuzyil.length ? satir('schedule', 'Yüzyıl', yuzyil.join(', ')) : satir('schedule', eserTarihEtiket(e)[0], eserTarihEtiket(e)[1])}
       ${satir('location_on', 'Konum', yer)}
     </div>
+    ${typeof gKartHtml === 'function' ? gKartHtml(String(e[0])) : ''}
     ${notlar.map(n => eserNotHtml(n, e[1])).join('')}`;
+  if (typeof gKartBagla === 'function') gKartBagla(el, String(e[0]), (sessiz) => { if (!sessiz) { const st = $('panel-body').scrollTop; eserKart(el, p, e, a, turler); $('panel-body').scrollTop = st; } });
   el.querySelectorAll('.eser-devam').forEach(b => { b.onclick = () => { const m = b.previousElementSibling; const ac = m.classList.toggle('kisa'); b.textContent = ac ? 'Devamını göster' : 'Daha az göster'; }; });
   $('es-dir').onclick = () => openDirections({ to: p });
   $('es-start').onclick = () => openDirections({ to: p, autostart: true });

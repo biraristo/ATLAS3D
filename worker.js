@@ -4,6 +4,7 @@
 //   /api/reverse       Nominatim (koordinattan adres)
 //   /api/lookup        Nominatim (OSM nesne detayı: telefon, web, saatler)
 //   /api/route         OSRM (araç / yürüyüş / bisiklet rota)
+//   /api/trip          OSRM trip: en çok 12 durağı en kısa sıraya dizer (günlük eser rotası)
 //   /api/nearby        Nominatim (harita alanında kategori araması)
 //   /api/fuel          EPDK günlük akaryakıt ve LPG bayi satış fiyatı bülteni (Türkiye ortalaması)
 //   /api/traffic/*     TomTom (TOMTOM_API_KEY varsa): trafik karoları, trafikli rota, ulaşılabilir alan
@@ -58,6 +59,13 @@ const routes = {
   async '/api/lookup'(p, ctx, origin) {
     const ids = clean(p.get('osm_ids')); if (!/^[NWR]\d+$/.test(ids)) return json([], 400);
     return cachedFetch(`${NOMINATIM}/lookup?format=jsonv2&addressdetails=1&extratags=1&namedetails=1&accept-language=tr&osm_ids=${ids}`, 604800, ctx, origin);
+  },
+  async '/api/trip'(p, ctx, origin) {
+    const svc = { car: 'routed-car', foot: 'routed-foot', bike: 'routed-bike' }[p.get('mode')];
+    const c = (p.get('coords') || '').split(';').map(s => s.split(',').map(v => num(v, 6)));
+    if (!svc || c.length < 2 || c.length > 12 || c.some(x => x.length !== 2 || x.includes(null))) return json({ error: 'params' }, 400);
+    // ilk durak başlangıç (konum ya da ilk eser), dönüş yok; geri kalan sıra OSRM'den
+    return cachedFetch(`https://routing.openstreetmap.de/${svc}/trip/v1/driving/${c.map(x => x.join(',')).join(';')}?roundtrip=false&source=first&overview=full&geometries=geojson`, 600, ctx, origin);
   },
   async '/api/route'(p, ctx, origin, env) {
     const svc = { car: 'routed-car', foot: 'routed-foot', bike: 'routed-bike' }[p.get('mode')];

@@ -133,6 +133,40 @@ const routes = {
     const [w, s, e, n] = bb;
     return cachedFetch(`${NOMINATIM}/search?format=jsonv2&limit=40&bounded=1&addressdetails=1&extratags=1&accept-language=tr&viewbox=${w},${n},${e},${s}&q=` + encodeURIComponent(q), 86400, ctx, origin);
   },
+  // Araç görseli: Wikipedia'nın sayfa görseli (yalnız özgür lisanslı Wikimedia Commons dosyaları). 30 gün önbellek.
+  // Model adı başlıkta geçmeyen sonuç kabul edilmez; aynı modelin kuşak sayfaları arasından yıla en yakın görsel seçilir.
+  async '/api/carimg'(p, ctx) {
+    const mk = clean(p.get('mk')).slice(0, 40), md = clean(p.get('md')).slice(0, 60), y = parseInt(p.get('y') || '0', 10);
+    if (!mk || !md) return json({ error: 'params' }, 400);
+    const key = new Request(`https://atlas3d.cache/carimg/v1/${encodeURIComponent(mk)}/${encodeURIComponent(md)}/${y || 0}`);
+    const hit = await caches.default.match(key); if (hit) return hit;
+    const norm = s => s.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+    // Türkçe adlandırma → Wikipedia adı
+    const names = md.split(' / ').map(n => n.replace(/ Serisi$/, ' Series').replace(/-Serisi$/, '-Class').replace(/^Hatch \/ Cabrio.*/, 'Hatch').replace(/ \(.*\)$/, ''));
+    const make = mk === 'KGM (SsangYong)' ? 'SsangYong' : mk === 'MINI' ? 'Mini' : mk;
+    let best = null;
+    for (const n of names) {
+      const u = 'https://en.wikipedia.org/w/api.php?action=query&format=json&generator=search&gsrlimit=8&prop=pageimages&piprop=thumbnail|name&pithumbsize=640&gsrsearch=' + encodeURIComponent(`${make} ${n}`);
+      const r = await fetch(u, { headers: { 'User-Agent': UA } }); if (!r.ok) continue;
+      const pages = Object.values((await r.json())?.query?.pages || {}).filter(pg => pg.thumbnail?.source && pg.pageimage && !/logo|\.svg$/i.test(pg.pageimage));
+      const want = norm(`${make} ${n}`);
+      const ok = pages.filter(pg => norm(pg.title).startsWith(want));
+      if (!ok.length) continue;
+      const yearOf = pg => { const m = (pg.pageimage + ' ' + pg.title).match(/(19[89]\d|20[0-3]\d)/g); return m ? +m[0] : null; };
+      // Başlıkta model adından sonra kuşak dışında bir şey varsa (ör. "Golf Sportsvan", "i20 WRC") farklı araçtır: geri plana at
+      // (parantez içi kasa kodu serbest: "BMW 3 Series (E90)")
+      const extra = pg => norm(pg.title.replace(/\(.*?\)/g, ' ')).slice(want.length).trim().split(' ').filter(Boolean).some(w => !/^(mk\d+|[ivx]+|19\d\d|20\d\d|first|second|third|fourth|fifth|sixth|seventh|eighth|generation|facelift)$/.test(w)) ? 100 : 0;
+      const score = pg => extra(pg) + (y && yearOf(pg) ? Math.abs(yearOf(pg) - y) : 50);
+      ok.sort((a, b) => score(a) - score(b) || a.index - b.index);
+      // Genel sayfa (ör. "Volkswagen Golf") yıl bilgisi yoksa en güncel kuşağı gösterir; kuşak sayfası yıla daha yakınsa o seçilir
+      const c = ok[0];
+      best = { src: c.thumbnail.source, file: c.pageimage, title: c.title, page: 'https://en.wikipedia.org/wiki/' + encodeURIComponent(c.title.replace(/ /g, '_')) };
+      break;
+    }
+    const res = json(best || { src: null }, 200, 'public, max-age=' + (best ? 2592000 : 86400));
+    ctx.waitUntil(caches.default.put(key, res.clone()));
+    return res;
+  },
   // Rota boyunca anlık hava: sıcaklık (°C), 10 m rüzgâr hızı (m/s) ve geldiği yön (°). Open-Meteo, anahtarsız. 20 dk önbellek.
   async '/api/weather'(p, ctx) {
     const pts = (p.get('pts') || '').split(';').slice(0, 8).map(s => s.split(',').map(v => num(v, 2)));

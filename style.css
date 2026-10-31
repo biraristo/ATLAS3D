@@ -636,28 +636,68 @@ body.navigating.fuel-on .map-ctrls{bottom:calc(205px + var(--safe-b))}
 .gv-a{display:flex;align-items:center;gap:2px}
 .gv-add{padding:6px 16px 4px;display:flex;gap:8px}
 .gv-learn{display:flex;align-items:center;gap:4px;color:var(--green)!important}.gv-learn .ms{font-size:15px}
-/* Araç seçici (katalog) */
-.cp-head{display:flex;align-items:center;gap:6px;padding-left:12px}
-.cp-head>div{min-width:0}.cp-head h2{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.cp-search{display:flex;align-items:center;gap:8px;margin:12px 16px 4px;border:1px solid var(--line);border-radius:10px;padding:0 10px;height:40px;background:var(--bg)}
-.cp-search:focus-within{border-color:var(--blue)}
+/* Araç seçici (katalog) — yakıt türü renkleri kartın sol şeridi ve tüketim göstergesinde */
+:root{--fk-benzin:#b3570b;--fk-dizel:#3d5470;--fk-lpg:#00796b;--fk-ev:#137333;--fk-hyb:#6b45c4}
+:root[data-theme="dark"]{--fk-benzin:#f0a35e;--fk-dizel:#9db4d4;--fk-lpg:#5fc9bb;--fk-ev:#81c995;--fk-hyb:#b9a2f0}
+.cp-head{display:flex;align-items:center;gap:6px;padding:14px 16px 6px 10px;border-bottom:0}
+.cp-head>div{min-width:0}.cp-head h2{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:20px}
+.cp-steps{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;list-style:none;margin:0;padding:4px 16px 12px;border-bottom:1px solid var(--line)}
+.cp-steps li{border-top:3px solid var(--line-2);padding-top:5px;font-size:12px;color:var(--muted)}
+.cp-steps li.done{border-color:var(--blue)}.cp-steps li.on{border-color:var(--blue-d);color:var(--text);font-weight:500}
+.cp-steps button{border:0;background:none;padding:0;font:inherit;color:var(--blue-d);cursor:pointer}
+.cp-steps button:hover{text-decoration:underline}
+.cp-search{display:flex;align-items:center;gap:8px;margin:14px 16px 4px;border:1px solid var(--line);border-radius:22px;padding:0 14px;height:44px;background:var(--surface-2)}
+.cp-search:focus-within{border-color:var(--blue);background:var(--bg)}
 .cp-search .ms{color:var(--muted);font-size:20px}
 .cp-search input{flex:1;min-width:0;border:0;outline:0;background:none;font:inherit;font-size:15px;color:var(--text)}
-.cp-sec{padding:14px 24px 6px;font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
-.cp-grid{display:flex;flex-wrap:wrap;gap:8px;padding:4px 16px 6px}
-.cp-grid.yrs{padding-top:16px}
-.cp-chip{border:1px solid var(--line);background:var(--bg);border-radius:18px;padding:7px 14px;font:inherit;font-size:14px;color:var(--text-2);cursor:pointer}
-.cp-chip:hover{background:var(--blue-bg);border-color:var(--blue);color:var(--blue-d)}
-.cp-grid.yrs .cp-chip{min-width:72px;text-align:center;font-variant-numeric:tabular-nums}
+.cp-sec{margin:0;padding:16px 24px 8px;font-size:13px;font-weight:500;color:var(--muted)}
+.cp-mono{--mh:210;flex:none;width:36px;height:36px;border-radius:10px;display:grid;place-items:center;font-size:13px;font-weight:700;letter-spacing:-.02em;
+  color:hsl(var(--mh) 45% 30%);background:hsl(var(--mh) 55% 92%)}
+:root[data-theme="dark"] .cp-mono{color:hsl(var(--mh) 60% 82%);background:hsl(var(--mh) 25% 24%)}
+.cp-brands{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;padding:2px 16px 6px}
+.cp-brand{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 4px 10px;border:1px solid var(--line-2);border-radius:14px;background:var(--bg);font:inherit;color:var(--text);cursor:pointer}
+.cp-brand b{font-weight:500;font-size:13px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cp-brand:hover{border-color:var(--blue);background:var(--blue-bg)}
 .cp-list{display:flex;flex-direction:column}
-.cp-it{display:flex;align-items:center;gap:10px;width:100%;padding:11px 24px;border:0;border-bottom:1px solid var(--surface-3);background:none;font:inherit;text-align:left;color:var(--text);cursor:pointer}
+.cp-it{display:flex;align-items:center;gap:14px;width:100%;padding:10px 16px 10px 24px;border:0;border-bottom:1px solid var(--surface-3);background:none;font:inherit;text-align:left;color:var(--text);cursor:pointer}
 .cp-it:hover{background:var(--hover)}
-.cp-it>.ms{color:var(--muted);font-size:20px}.cp-it.eng>.ms{color:var(--blue-d)}
+.cp-it>.ms{color:var(--muted);font-size:20px}
 .cp-m{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .cp-m b{font-weight:500;font-size:15px}
 .cp-m small{color:var(--muted);font-size:12.5px;line-height:1.4}
-.cp-m small b{font-size:12.5px;color:var(--text)}
+.cp-model{padding-left:16px}
+.cp-thumb,.gv-img,.ve-img{flex:none;width:84px;height:52px;border-radius:10px;overflow:hidden;background:var(--surface-2);display:grid;place-items:center;color:var(--muted)}
+.cp-thumb img,.gv-img img,.ve-img img,.cp-hero img{width:100%;height:100%;object-fit:cover;display:block}
+.ci-sil{display:grid;place-items:center;width:100%;height:100%}.ci-sil svg,.gv-img.sil svg{width:76%;height:auto}
+.cp-hero{position:relative;margin:14px 16px 6px;aspect-ratio:16/8;border-radius:16px;overflow:hidden;background:var(--surface-2);display:grid;place-items:center;color:var(--muted)}
+.cp-hero .ci-sil svg{width:46%}
+.ci-credit{position:absolute;right:8px;bottom:8px;font-size:10.5px;color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:9px;text-decoration:none}
+.cp-years{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;padding:12px 16px 4px}
+.cp-year{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--bg);font:inherit;color:var(--text);cursor:pointer}
+.cp-year b{font-size:17px;font-weight:500;font-variant-numeric:tabular-nums}.cp-year small{font-size:11.5px;color:var(--muted)}
+.cp-year:hover{border-color:var(--blue);background:var(--blue-bg)}
+.cp-engs{display:flex;flex-direction:column;gap:10px;padding:10px 16px 4px}
+.cp-eng{--fk:var(--fk-benzin);position:relative;display:flex;flex-direction:column;gap:6px;width:100%;padding:12px 14px 12px 18px;border:1px solid var(--line);border-radius:14px;background:var(--bg);font:inherit;text-align:left;color:var(--text);cursor:pointer;overflow:hidden}
+.cp-eng::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--fk)}
+.cp-eng:hover{border-color:var(--fk)}
+.cp-eng.fk-dizel{--fk:var(--fk-dizel)}.cp-eng.fk-lpg{--fk:var(--fk-lpg)}.cp-eng.fk-ev{--fk:var(--fk-ev)}.cp-eng.fk-hyb{--fk:var(--fk-hyb)}
+.ce-top{display:flex;align-items:center;gap:8px;font-size:12px}
+.ce-fuel{color:var(--fk);font-weight:500}
+.ce-pop{margin-left:auto;font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:8px;padding:0 6px;line-height:18px}
+.ce-name{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.ce-name b{font-size:17px;font-weight:500}
+.ce-hp{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}.ce-hp small{font-size:11px;font-weight:500;color:var(--muted);margin-left:2px}
+.ce-gauge{height:6px;border-radius:3px;background:var(--surface-3);overflow:hidden}
+.ce-gauge i{display:block;height:100%;border-radius:3px;background:var(--fk)}
+.ce-real{font-size:13px;color:var(--text-2)}.ce-real b{font-size:15px;color:var(--text);font-variant-numeric:tabular-nums}
+.ce-meta{font-size:12px;color:var(--muted)}
 .cp-foot{padding:14px 16px 4px}.cp-foot .mini-note{padding:10px 8px}
+.cp-eng:focus-visible,.cp-brand:focus-visible,.cp-year:focus-visible,.cp-it:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.gv-img{width:72px;height:48px}
+.gv{flex-wrap:wrap}.gv-m{flex:1 1 160px}
+.gv-a{flex:1 0 100%;justify-content:flex-end;gap:4px;margin:-4px -4px -6px 0}
+.gv-del{color:var(--muted)}.gv-del:hover{color:var(--red)}
+.ve-img{width:96px;height:60px}
 /* Araç kutusu ve düzenleme */
 .vf-car{display:flex;align-items:center;gap:10px;justify-content:space-between;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);margin-bottom:12px}
 .vf-car>div{min-width:0;display:flex;flex-direction:column;gap:2px}
@@ -667,7 +707,6 @@ body.navigating.fuel-on .map-ctrls{bottom:calc(205px + var(--safe-b))}
 .vf-tog small{display:block;color:var(--muted);font-size:12px}
 .vf-tog.sm{align-items:center;margin:20px 0 0}
 .ve-car{display:flex;align-items:flex-start;gap:12px;padding:12px;border:1px solid var(--blue);background:var(--surface-2);border-radius:14px;margin-bottom:16px}
-.ve-car>.ms{color:var(--blue-d);font-size:26px}
 .ve-car>div{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .ve-car b{font-weight:500;font-size:15px}.ve-car small{color:var(--muted);font-size:12.5px;line-height:1.4}.ve-car small b{font-size:12.5px;color:var(--text)}
 .ve-pick{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
@@ -686,7 +725,7 @@ body.navigating.fuel-on .map-ctrls{bottom:calc(205px + var(--safe-b))}
 .ve-form>.vf-f{margin-bottom:12px}
 .ve-form .vf-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 .ve-acts{display:flex;align-items:center;gap:8px;margin-top:16px}
-.ve-del{margin-left:auto;color:var(--red)}
+.ve-del{margin-left:auto;color:var(--red)!important}
 
 /* ================= Yolculuk geçmişi ================= */
 .tr-sum{margin:12px 16px 4px;padding:12px 14px;border-radius:14px;background:var(--surface-2);border:1px solid var(--line)}

@@ -153,6 +153,7 @@ async function setEser(on) {
   document.body.classList.toggle('eser-acik', on);
   if (!on) {
     if (typeof zamanKapat === 'function') zamanKapat();
+    if (typeof kolSec === 'function' && kol.secili) kolSec(null);
     eserGorunur(false); $('eser-bar').hidden = true; eserSecimGoster(null);
     applyBasemap(); // haritanın etiketleri geri gelir
     if (typeof applyTerrainOpts === 'function') applyTerrainOpts();
@@ -182,10 +183,11 @@ const eserKisa = n => n >= 1000 ? nf1.format(n / 1000) + ' B' : String(n);
 function eserBarCiz() {
   const bar = $('eser-bar'), s = eser.data.sayi;
   bar.innerHTML = `<button class="eser-chip zaman-chip${typeof zaman !== 'undefined' && zaman.acik ? ' on' : ''}" id="zaman-chip"><span class="ms">history</span>Zaman</button>`
-    + `<button class="eser-chip arac-chip" id="gunluk-chip"><span class="ms">where_to_vote</span>Günlüğüm</button><button class="eser-chip arac-chip" id="yakin-chip"><span class="ms">near_me</span>Yakınımda</button>` + ESER_AILE.map((a, i) => `<button class="eser-chip${eser.kapali.has(i) ? ' kapali' : ''}" data-f="${i}" style="--c:${a.renk}" aria-pressed="${!eser.kapali.has(i)}"><i></i>${a.ad}<small>${eserKisa(s[i])}</small></button>`).join('');
+    + `<button class="eser-chip arac-chip" id="gunluk-chip"><span class="ms">where_to_vote</span>Günlüğüm</button><button class="eser-chip arac-chip" id="yakin-chip"><span class="ms">near_me</span>Yakınımda</button><button class="eser-chip arac-chip" id="kol-chip"><span class="ms">architecture</span>Koleksiyonlar</button>` + ESER_AILE.map((a, i) => `<button class="eser-chip${eser.kapali.has(i) ? ' kapali' : ''}" data-f="${i}" style="--c:${a.renk}" aria-pressed="${!eser.kapali.has(i)}"><i></i>${a.ad}<small>${eserKisa(s[i])}</small></button>`).join('');
   $('zaman-chip').onclick = () => zamanAcKapat();
   $('gunluk-chip').onclick = () => gunlukPanel();
   $('yakin-chip').onclick = () => yakinPanel();
+  $('kol-chip').onclick = () => kolPanel();
   bar.querySelectorAll('[data-f]').forEach(b => {
     b.onclick = () => {
       const f = +b.dataset.f;
@@ -289,9 +291,11 @@ function eserKart(el, p, e, a, turler) {
       ${yuzyil.length ? satir('schedule', 'Yüzyıl', yuzyil.join(', ')) : satir('schedule', eserTarihEtiket(e)[0], eserTarihEtiket(e)[1])}
       ${satir('location_on', 'Konum', yer)}
     </div>
+    ${typeof kolKartHtml === 'function' ? kolKartHtml(e) : ''}
     ${typeof e[0] === 'number' && !notlar.some(n => n.metin?.length) ? '<section class="eser-hakkinda" id="ke-metin" hidden></section>' : ''}
     ${typeof gKartHtml === 'function' ? gKartHtml(String(e[0])) : ''}
     ${notlar.map(n => eserNotHtml(n, e[1])).join('')}`;
+  if (typeof kolKartBagla === 'function') kolKartBagla(el);
   eserMetinYukle(e[0]).then(([ps, q]) => { // Kültür Envanteri açıklaması ve Vikipedi bağlantısı (gelince eklenir)
     const m = el.querySelector('#ke-metin'); if (!m || currentPlace !== p) return;
     if (!ps && !q) return;

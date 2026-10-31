@@ -744,7 +744,7 @@ let viewStack = [], panelMode = null;
 function sheetHeights() { const H = innerHeight; return { min: 132, peek: Math.round(H * 0.42), full: H - 64 }; }
 let sheetState = 'peek';
 function setSheet(state, px) {
-  if (!isMobile() || panel.hidden) { document.documentElement.style.setProperty('--sheet-h', '0px'); body.classList.remove('sheet-full'); return; }
+  if (!isMobile() || panel.hidden) { document.documentElement.style.setProperty('--sheet-h', '0px'); body.classList.remove('sheet-full', 'sheet-high'); return; } // ikisi de temizlenmeli: kalırsa üst çubuk gizli kalır
   sheetState = state;
   const h = px ?? sheetHeights()[state];
   document.documentElement.style.setProperty('--sheet-h', h + 'px');

@@ -4,28 +4,35 @@
 'use strict';
 
 const zaman = { acik: false, yil: 1500, mod: 'birikimli', tahmin: true, oynat: null };
-// Ölçek üç parçalı: MÖ 12000–MÖ 3000 (Neolitik, Göbeklitepe) %22 · MÖ 3000–MS 0 %20 · MS 0–2025 %58
-// Daha eski (Paleolitik) eserler kaydırıcının en başında birlikte görünür.
-const Z_MIN = -12000, Z_MAX = 2025;
-const Z_PARCA = [[-12000, 0], [-3000, 22], [0, 42], [2025, 100]];
+// Ölçek dört parçalı; başlangıç verideki en eski eserdir (ör. Abourma kaya resimleri, MÖ 300.000):
+// en eski–MÖ 12000 logaritmik %12 · MÖ 12000–3000 (Neolitik, Göbeklitepe) %18 · MÖ 3000–MS 0 %18 · MS 0–2025 %52
+let Z_MIN = -12000;
+const Z_MAX = 2025, Z_PALEO = -12000, Z_PALEO_X = 12;
+const Z_PARCA = [[-12000, 12], [-3000, 30], [0, 48], [2025, 100]];
 const zX = y => {
   y = Math.max(Z_MIN, Math.min(Z_MAX, y));
+  if (y < Z_PALEO) return Z_MIN >= Z_PALEO ? 0 : Z_PALEO_X * (1 - Math.log(y / Z_PALEO) / Math.log(Z_MIN / Z_PALEO));
   for (let k = 1; k < Z_PARCA.length; k++) { const [y0, x0] = Z_PARCA[k - 1], [y1, x1] = Z_PARCA[k]; if (y <= y1) return x0 + (x1 - x0) * (y - y0) / (y1 - y0); }
   return 100;
 };
 const zY = x => {
+  if (x < Z_PALEO_X) return Z_MIN >= Z_PALEO ? Z_PALEO : Z_PALEO * Math.pow(Z_MIN / Z_PALEO, 1 - x / Z_PALEO_X);
   for (let k = 1; k < Z_PARCA.length; k++) { const [y0, x0] = Z_PARCA[k - 1], [y1, x1] = Z_PARCA[k]; if (x <= x1) return y0 + (y1 - y0) * (x - x0) / (x1 - x0); }
   return Z_MAX;
 };
+function zamanBaslangic() { // en eski tarihli eser, bin yıla yuvarlanmış
+  let m = 0; for (const f of eser.data.feats) { const y = f.properties.y; if (y != null && y < m) m = y; }
+  Z_MIN = Math.floor(Math.min(m, Z_PALEO) / 1000) * 1000;
+}
 const Z_KOVA = 64; // histogram: kaydırıcı boyunca eşit genişlikte çubuklar
 // Anadolu merkezli dönem adları (kaydırıcının üstünde)
-const Z_DONEM = [[-300000, 'Paleolitik · avcı-toplayıcılar'], [-10000, 'Neolitik · Göbeklitepe, Karahantepe'], [-8500, 'Neolitik · ilk köyler'], [-7500, 'Neolitik · Çatalhöyük'], [-5500, 'Kalkolitik'], [-3000, 'Erken Tunç Çağı'], [-2000, 'Orta Tunç Çağı · Asur ticaret kolonileri'], [-1650, 'Hitit İmparatorluğu'],
+const Z_DONEM = [[-3000000, 'Alt Paleolitik · ilk taş aletler'], [-300000, 'Orta Paleolitik'], [-40000, 'Üst Paleolitik · mağara resimleri'], [-20000, 'Epipaleolitik · avcı-toplayıcılar'], [-10000, 'Neolitik · Göbeklitepe, Karahantepe'], [-8500, 'Neolitik · ilk köyler'], [-7500, 'Neolitik · Çatalhöyük'], [-5500, 'Kalkolitik'], [-3000, 'Erken Tunç Çağı'], [-2000, 'Orta Tunç Çağı · Asur ticaret kolonileri'], [-1650, 'Hitit İmparatorluğu'],
   [-1180, 'Demir Çağı · Frig, Urartu, Geç Hitit'], [-700, 'Lidya ve İyon kentleri'], [-546, 'Pers İmparatorluğu'], [-334, 'Helenistik dönem'],
   [-30, 'Roma İmparatorluğu'], [330, 'Bizans İmparatorluğu'], [1071, 'Selçuklu dönemi'], [1308, 'Beylikler ve erken Osmanlı'],
   [1453, 'Osmanlı klasik dönemi'], [1699, 'Osmanlı · Lale Devri ve yenileşme'], [1839, 'Tanzimat ve son Osmanlı'], [1923, 'Cumhuriyet']];
 const zDonem = y => Z_DONEM.reduce((a, d) => y >= d[0] ? d[1] : a, Z_DONEM[0][1]);
-const zYilYaz = y => y < 0 ? `MÖ ${-y}` : y < 1000 ? `MS ${y}` : String(y);
-const zYuvarla = y => y < -3000 ? Math.round(y / 100) * 100 : y < 0 ? Math.round(y / 50) * 50 : Math.round(y / 10) * 10;
+const zYilYaz = y => y < 0 ? `MÖ ${-y >= 10000 ? nf0.format(-y) : -y}` : y < 1000 ? `MS ${y}` : String(y);
+const zYuvarla = y => y < -12000 ? Math.round(y / 1000) * 1000 : y < -3000 ? Math.round(y / 100) * 100 : y < 0 ? Math.round(y / 50) * 50 : Math.round(y / 10) * 10;
 
 /* ----- Süzgeç: eser katmanlarına uygulanır (veriyi yeniden yüklemeden, hızlı) ----- */
 function zamanFiltre() {
@@ -35,7 +42,8 @@ function zamanFiltre() {
 }
 function zamanUygula() {
   if (!map.getLayer('eser-yogun')) return;
-  const f = zaman.acik ? zamanFiltre() : null;
+  const parca = [...(zaman.acik ? [zamanFiltre()] : []), ...(typeof kolFiltre === 'function' ? kolFiltre() : [])];
+  const f = parca.length ? ['all', ...parca] : null;
   ['eser-hale', 'eser-yogun', 'eser-nokta'].forEach(id => map.setFilter(id, f));
 }
 /* ----- Sayım ve histogram ----- */
@@ -75,7 +83,7 @@ function zamanCiz() {
     <div class="zp-sayi"><b>${nf0.format(n)}</b> eser${zaman.mod === 'birikimli' ? ' bu tarihe kadar' : ' bu yüzyılda'}</div>
     <div class="zp-hist">${bars}<span class="zp-gobekli" style="left:${zX(-9600)}%">Göbeklitepe</span></div>
     <div class="zp-ray"><input type="range" id="zp-kay" min="0" max="1000" value="${Math.round(zX(zaman.yil) * 10)}" aria-label="Yıl">
-      <div class="zp-tik"><span style="left:0;transform:none">MÖ 12000</span>${tick(-3000, 'MÖ 3000')}${tick(0, 'MS 1')}${tick(1000, '1000')}${tick(1880, '2000')}</div></div>
+      <div class="zp-tik"><span style="left:0;transform:none">${zYilYaz(Z_MIN)}</span>${tick(-3000, 'MÖ 3000')}${tick(0, 'MS 1')}${tick(1000, '1000')}${tick(1880, '2000')}</div></div>
     <div class="zp-alt">
       <button class="zp-oynat" id="zp-oynat" aria-label="${zaman.oynat ? 'Durdur' : 'Oynat'}"><span class="ms fill">${zaman.oynat ? 'pause' : 'play_arrow'}</span></button>
       <div class="zp-mod"><button data-m="birikimli" class="${zaman.mod === 'birikimli' ? 'on' : ''}">Birikimli</button><button data-m="yuzyil" class="${zaman.mod === 'yuzyil' ? 'on' : ''}">O yüzyıl</button></div>
@@ -115,12 +123,12 @@ document.addEventListener('atlas-yil', e => { if (zaman.acik && e.detail.kaynak 
 
 /* ----- Oynat: yüzyıl yüzyıl ilerler; eski çağlarda daha hızlı ----- */
 function zamanOynat() {
-  if (zaman.yil >= 2020) zamanYil(-12000);
+  if (zaman.yil >= 2020) zamanYil(Z_MIN);
   zaman.oynat = setInterval(() => {
-    const adim = zaman.yil < -3000 ? 300 : zaman.yil < -1000 ? 100 : zaman.yil < 0 ? 50 : 20;
-    if (zaman.yil + adim > 2020) { zamanYil(2020); zamanOynatDur(true); return; }
-    zamanYil(zaman.yil + adim);
-  }, 140);
+    const x = zX(zaman.yil) + 0.3; // kaydırıcıda eşit adım: eski çağlar hızlı, tarihî dönemler yavaş geçer
+    if (x >= 100 || zaman.yil >= 2020) { zamanYil(2020); zamanOynatDur(true); return; }
+    zamanYil(Math.max(zY(x), zaman.yil + 10));
+  }, 120);
   zamanCiz();
 }
 function zamanOynatDur(ciz) {
@@ -134,7 +142,7 @@ function zamanAcKapat(on = !zaman.acik) {
   if (on && !eser.on) return;
   zaman.acik = on;
   document.body.classList.toggle('zaman-acik', on);
-  if (on) zaman.yil = zYuvarla(atlasYil);
+  if (on) { zamanBaslangic(); zaman.yil = zYuvarla(atlasYil); }
   else zamanOynatDur();
   zamanUygula(); zamanCiz();
   if (typeof eserBarCiz === 'function' && eser.data) eserBarCiz();

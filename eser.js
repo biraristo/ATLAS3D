@@ -253,6 +253,16 @@ function eserTarihEtiket(e) {
   const [bas, son, ad] = T.aralik[t[2]], yy = y => y < 0 ? `MÖ ${-y}` : String(y);
   return [t[1] === 2 ? 'Tarih (tahmini)' : t[1] === 1 ? 'Dönem' : 'Tarih', `${ad}${bas !== son ? ` · ${yy(bas)}–${yy(son)}` : ''}`];
 }
+// Açıklama metinleri 256 parçada (tools/build_metin.py); dokunulan eserin parçası bir kez indirilir
+const eserMetinParca = new Map(); let eserWikidata = null;
+async function eserMetinYukle(id) {
+  if (typeof id !== 'number') return [null, null];
+  const k = id % 256;
+  if (!eserMetinParca.has(k)) eserMetinParca.set(k, fetch(`/data/heritage/metin/${k}.json`).then(r => r.ok ? r.json() : {}).catch(() => ({})));
+  if (!eserWikidata) eserWikidata = fetch('/data/heritage/wikidata.json').then(r => r.ok ? r.json() : {}).catch(() => ({}));
+  const [d, w] = await Promise.all([eserMetinParca.get(k), eserWikidata]);
+  return [d[id] || null, w[id] || null];
+}
 function eserKart(el, p, e, a, turler) {
   const S = eser.data.sozluk;
   const kultur = (e[6] || []).map(k => S.kultur[k]).filter(x => x && x !== '?');
@@ -279,8 +289,18 @@ function eserKart(el, p, e, a, turler) {
       ${yuzyil.length ? satir('schedule', 'Yüzyıl', yuzyil.join(', ')) : satir('schedule', eserTarihEtiket(e)[0], eserTarihEtiket(e)[1])}
       ${satir('location_on', 'Konum', yer)}
     </div>
+    ${typeof e[0] === 'number' && !notlar.some(n => n.metin?.length) ? '<section class="eser-hakkinda" id="ke-metin" hidden></section>' : ''}
     ${typeof gKartHtml === 'function' ? gKartHtml(String(e[0])) : ''}
     ${notlar.map(n => eserNotHtml(n, e[1])).join('')}`;
+  eserMetinYukle(e[0]).then(([ps, q]) => { // Kültür Envanteri açıklaması ve Vikipedi bağlantısı (gelince eklenir)
+    const m = el.querySelector('#ke-metin'); if (!m || currentPlace !== p) return;
+    if (!ps && !q) return;
+    const uzun = ps && ps.join(' ').length > 520;
+    m.innerHTML = `${ps ? `<h3>Hakkında</h3><div class="eser-metin${uzun ? ' kisa' : ''}">${ps.map(x => `<p>${esc(x)}</p>`).join('')}</div>${uzun ? '<button class="text-btn eser-devam">Devamını göster</button>' : ''}` : ''}
+      ${q ? `<a class="eser-wiki" href="https://www.wikidata.org/wiki/Special:GoToLinkedPage/trwiki/${q}" target="_blank" rel="noopener"><span class="ms">menu_book</span>Vikipedi'de oku</a>` : ''}`;
+    m.hidden = false;
+    m.querySelector('.eser-devam')?.addEventListener('click', ev => { const t = m.querySelector('.eser-metin'); const ac = t.classList.toggle('kisa'); ev.target.textContent = ac ? 'Devamını göster' : 'Daha az göster'; });
+  });
   if (typeof gKartBagla === 'function') gKartBagla(el, String(e[0]), (sessiz) => { if (!sessiz) { const st = $('panel-body').scrollTop; eserKart(el, p, e, a, turler); $('panel-body').scrollTop = st; } });
   el.querySelectorAll('.eser-devam').forEach(b => { b.onclick = () => { const m = b.previousElementSibling; const ac = m.classList.toggle('kisa'); b.textContent = ac ? 'Devamını göster' : 'Daha az göster'; }; });
   $('es-dir').onclick = () => openDirections({ to: p });

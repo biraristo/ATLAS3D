@@ -51,6 +51,9 @@ Tüketim modeli ve sınırları: test döngüsü ile yol arasındaki ölçüleme
 
 ## Tarihî eser verisi
 
+Karttaki "Hakkında" metinleri (29 bin eser) `tools/fetch_ke_text.py` ile çekilip `tools/build_metin.py` ile temizlenir (dipnot ve kaynakça çıkarılır) ve 256 parçaya bölünür (`data/heritage/metin/`); dokunulan eserin parçası bir kez indirilir. Wikidata kimliğinden "Vikipedi'de oku" bağlantısı verilir.
+
+
 `data/heritage/kulturenvanteri.json` Kültür Envanteri'nin (kulturenvanteri.com) yer kayıtlarından derlenir: ad, koordinat, tür, kültür, yüzyıl, durum ve konum. Açıklama metinleri ve fotoğraflar alınmaz; kart eserin Kültür Envanteri sayfasına bağlantı verir. Yeniden üretmek için:
 
 ```

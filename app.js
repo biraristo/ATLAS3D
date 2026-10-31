@@ -225,6 +225,8 @@ async function buildStyle() {
   insert({ id: 'a3-satroads', type: 'raster', source: 'satroads', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.85 } }, firstSymbol);
   if (opts.terrain) style.terrain = { source: 'dem', exaggeration: EXAG }; else delete style.terrain;
   style.sky = LIGHT_SKY;
+  // Küre: uzaklaşınca dünya küre olarak görünür (Mercator'un kuzeyde alanları şişirmesi olmaz), yakınlaşınca kendiliğinden düz haritaya geçer
+  style.projection = { type: 'globe' };
   themeStyle(style);
   return style;
 }

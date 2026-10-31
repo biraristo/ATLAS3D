@@ -367,7 +367,8 @@ $('opt-labels').onchange = e => { opts.labels = e.target.checked; store.set('opt
 // Harita düşük çözünürlükte çizilip yumuşatılmadan büyütülür (CSS image-rendering: pixelated); döndürünce de piksel görünüm korunur.
 // Harita altlığında sınırlı bir palet, uydu altlığında gerçek uydu fotoğrafı üstünde 3D binalar kullanılır.
 let isoOn = false, isoPrev = null, isoLight = null; // isoPrev: izometriğe geçmeden önceki kamera (çıkınca geri dönülür)
-const ISO_CAM = { pitch: 55, bearing: 45, fov: 8, pixelRatio: 0.6 } // 0,6: piksel hissi kalır, retina telefonda araziye giydirilen yollar ve zemin bulanıklaşmaz, DEFAULT_FOV = 36.87;
+// pixelRatio 0,6: piksel hissi kalır, retina telefonda araziye giydirilen yollar ve zemin bulanıklaşmaz
+const ISO_CAM = { pitch: 55, bearing: 45, fov: 8, pixelRatio: 0.6 }, DEFAULT_FOV = 36.87;
 const ISO_PAL = { land: '#d9cfa9', water: '#3f93c2', waterLine: '#9fd3ee', grass: '#86b84e', wood: '#4f8a3c', sand: '#e8d79a', road: '#f4efe2', roadCase: '#6b6355', rail: '#7a6a5a' };
 const ISO_DARK = { land: '#2a2e2a', water: '#16384f', waterLine: '#2d6b8c', grass: '#2f4d26', wood: '#22401e', sand: '#4a4430', road: '#6b6a62', roadCase: '#1a1a18', rail: '#4a4038' };
 const ISO_BLD = (dark, sat) => ['interpolate', ['linear'], ['coalesce', ['get', 'render_height'], 8],

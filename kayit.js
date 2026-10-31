@@ -113,7 +113,7 @@ function kytDugmeCiz() {
   b.classList.toggle('on', !!k);
   if (!k) { b.innerHTML = '<span class="kyt-nokta"></span><small>Rotayı kaydet</small>'; b.setAttribute('aria-label', 'Yolculuk kaydını başlat'); return; }
   let m = 0; for (let i = 1; i < k.pts.length; i++) m += haversine([k.pts[i - 1][1], k.pts[i - 1][2]], [k.pts[i][1], k.pts[i][2]]);
-  b.innerHTML = `<span class="kyt-kare"></span><b>${kytSure((Date.now() - k.bas) / 1000)}</b><small>${fmtDist(m)}</small>`;
+  b.innerHTML = `<span class="kyt-kare"></span><b>${kytSure((Date.now() - k.bas) / 1000)}</b><small>· ${fmtDist(m)}</small>`;
   b.setAttribute('aria-label', 'Kaydı bitir');
 }
 $('kyt-btn').onclick = e => {

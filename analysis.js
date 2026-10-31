@@ -566,9 +566,9 @@ function setHud({ source, elev, grade, terrain, aspect, sub }) {
   $('hud-label').innerHTML = `${source === 'gps' ? '<span class="hud-live"></span>' : ''}RAKIM · ${labels[source]}`;
   $('hud-elev').textContent = nf0.format(Math.round(elev)) + ' m';
   let chip;
-  if (source === 'gps') chip = grade == null ? `<span class="hud-chip muted"><span class="ms">directions_walk</span>Eğim için harekete geç</span>`
-    : `<span class="hud-chip" style="background:${slopeTint(grade)};color:${slopeInk(grade)}"><span class="ms">${ARROW(grade)}</span>${grade > 2 ? 'Çıkıyorsunuz' : grade < -2 ? 'İniyorsunuz' : 'Düz yol'} <b>${fmtSlope(grade)}</b></span>`;
-  else chip = terrain == null ? '' : `<span class="hud-chip" style="background:${slopeTint(terrain)};color:${slopeInk(terrain)}"><span class="ms">landscape</span>Arazi eğimi <b>%${nf0.format(Math.round(terrain))}</b></span>`;
+  if (source === 'gps') chip = grade == null ? `<span class="hud-chip muted"><span class="ms">directions_walk</span><span class="hc-uzun">Eğim için harekete geç</span><span class="hc-kisa">eğim —</span></span>`
+    : `<span class="hud-chip" style="background:${slopeTint(grade)};color:${slopeInk(grade)}"><span class="ms">${ARROW(grade)}</span><span class="hc-uzun">${grade > 2 ? 'Çıkıyorsunuz' : grade < -2 ? 'İniyorsunuz' : 'Düz yol'} </span><b>${fmtSlope(grade)}</b></span>`;
+  else chip = terrain == null ? '' : `<span class="hud-chip" style="background:${slopeTint(terrain)};color:${slopeInk(terrain)}"><span class="ms">landscape</span><span class="hc-uzun">Arazi eğimi </span><b>%${nf0.format(Math.round(terrain))}</b></span>`;
   $('hud-slope').innerHTML = chip;
   $('hud-sub').textContent = sub || '';
   // Son rakımlar grafiği

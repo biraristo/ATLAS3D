@@ -1104,3 +1104,27 @@ body.kyt-oynuyor .hud{display:none}
 .ko-alt .zp-mod button.on{color:#7a3db8}
 @media (max-width:720px){.kyt-oynatici{left:10px;right:10px;width:auto}}
 body.panel-open .kyt-oynatici{display:none}
+
+/* ================= İnce alt şerit: rakım kartı ve kayıt düğmesi tek satır ================= */
+.hud{min-height:0!important;padding:5px 10px 5px 6px!important;gap:8px!important;border-radius:14px!important}
+.hud-gauge{width:30px!important;height:30px!important}.hud-gauge svg{width:30px;height:30px}
+.hud .hud-main>small:first-child,.hud .hud-sub{display:none!important}
+.hud .hud-row{flex-wrap:nowrap;gap:6px}
+.hud .hud-row b{font-size:17px}
+.hud-chip{padding:2px 8px 2px 5px;font-size:12px}
+.hud-spark{display:none!important}
+.hud-go{font-size:18px!important}
+.kyt-btn{flex-direction:row!important;gap:7px!important;min-height:0!important;width:auto!important;padding:0 12px 0 10px!important;border-radius:14px!important}
+.kyt-nokta{width:14px;height:14px;box-shadow:0 0 0 2px var(--bg),0 0 0 4px #f2b8b5}
+.kyt-btn small{font-size:12.5px}
+.kyt-kare{width:11px;height:11px}
+.kyt-btn.on b{font-size:14px}
+.hud{right:186px!important}
+body.kyt-kayit .hud{right:200px!important}
+@media (max-width:720px){.hud{right:182px!important}body.kyt-kayit .hud{right:194px!important}}
+.hc-kisa{display:none}
+.hud .hc-uzun{display:none}.hud .hc-kisa{display:inline}
+.hud #hud-elev{white-space:nowrap}
+.hud-go{display:none!important}
+.hud{right:auto!important}
+@media (min-width:721px){.hud{left:auto!important;right:188px!important}body.kyt-kayit .hud{right:200px!important}}

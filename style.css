@@ -834,3 +834,6 @@ body.navigating.fuel-on .qlayers{bottom:calc(205px + var(--safe-b))}
 .ql-row input:checked+.ql-sw{background:var(--blue)}
 .ql-row input:checked+.ql-sw::after{transform:translateX(14px)}
 .ql-row input:focus-visible+.ql-sw{outline:2px solid var(--blue);outline-offset:2px}
+
+/* İzometrik görünüm: düşük çözünürlükte çizilen harita yumuşatılmadan büyütülür (piksel sanatı) */
+body.iso #map canvas{image-rendering:pixelated}

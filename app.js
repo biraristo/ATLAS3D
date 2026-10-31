@@ -82,6 +82,7 @@ function applyMapTheme() {
   }
   try { map.setSky(dark ? DARK_SKY : LIGHT_SKY); } catch {}
   if (map.getLayer('a3-slope')) map.setPaintProperty('a3-slope', 'raster-opacity', dark ? 0.5 : 0.8); // koyu zeminde eğim renkleri baskın olmasın
+  if (isoOn) applyIsoStyle();
 }
 function setTheme(pref) {
   themePref = pref; store.set('theme', pref); setThemeAttr(); applyMapTheme();
@@ -320,14 +321,17 @@ function applyBasemap() {
     if (l.type === 'symbol') vis = opts.labels ? vis : 'none';
     else if (l.type === 'background') vis = 'visible';
     else if (sat) vis = 'none';
-    if (id === 'building-3d') vis = !sat && opts.buildings ? 'visible' : 'none';
+    if (isoOn && l.type === 'symbol' && !ISO_LABEL.test(id)) vis = 'none';
+    // İzometrik + uydu: gerçek uydu fotoğrafının üstünde 3D binalar durur
+    if (id === 'building-3d') vis = (!sat || isoOn) && opts.buildings ? 'visible' : 'none';
     if (id === 'building') vis = !sat ? 'visible' : 'none';
     map.setLayoutProperty(id, 'visibility', vis);
   }
   map.setLayoutProperty('a3-sat', 'visibility', sat ? 'visible' : 'none');
-  map.setLayoutProperty('a3-satroads', 'visibility', sat && opts.labels ? 'visible' : 'none');
+  map.setLayoutProperty('a3-satroads', 'visibility', sat && opts.labels && !isoOn ? 'visible' : 'none');
   map.setLayoutProperty('a3-hillshade', 'visibility', sat ? 'none' : 'visible');
-  map.setPaintProperty('a3-hillshade', 'hillshade-exaggeration', HS_EXAG(0.75));
+  if (!isoOn) map.setPaintProperty('a3-hillshade', 'hillshade-exaggeration', HS_EXAG(0.75));
+  applyIsoStyle(); // izometrikte altlık değişince bina renkleri uyduya / haritaya göre ayarlanır
   // Katman düğmesinde "diğer" seçenek görünür
   const other = sat ? 'terrain' : 'satellite';
   $('layers-thumb').style.backgroundImage = `url(${BASEMAPS[other].thumb})`;
@@ -358,9 +362,90 @@ $('opt-terrain').onchange = e => {
 $('opt-buildings').onchange = e => { opts.buildings = e.target.checked; store.set('opts', opts); applyBasemap(); };
 $('opt-labels').onchange = e => { opts.labels = e.target.checked; store.set('opts', opts); applyBasemap(); };
 
+/* ----- İzometrik görünüm: SimCity benzeri piksel harita; arazi, 3D binalar, rota ve analiz canlı kalır ----- */
+// Kamera 45° yöne ve ~55° eğime (gerçek izometri 35,26° yükseklik açısı) kilitlenir, dar görüş açısı perspektifi neredeyse ortografik yapar.
+// Harita düşük çözünürlükte çizilip yumuşatılmadan büyütülür (CSS image-rendering: pixelated); döndürünce de piksel görünüm korunur.
+// Harita altlığında sınırlı bir palet, uydu altlığında gerçek uydu fotoğrafı üstünde 3D binalar kullanılır.
+let isoOn = false, isoPrev = null, isoLight = null; // isoPrev: izometriğe geçmeden önceki kamera (çıkınca geri dönülür)
+const ISO_CAM = { pitch: 55, bearing: 45, fov: 8, pixelRatio: 0.34 }, DEFAULT_FOV = 36.87;
+const ISO_PAL = { land: '#d9cfa9', water: '#3f93c2', waterLine: '#9fd3ee', grass: '#86b84e', wood: '#4f8a3c', sand: '#e8d79a', road: '#f4efe2', roadCase: '#6b6355', rail: '#7a6a5a' };
+const ISO_DARK = { land: '#2a2e2a', water: '#16384f', waterLine: '#2d6b8c', grass: '#2f4d26', wood: '#22401e', sand: '#4a4430', road: '#6b6a62', roadCase: '#1a1a18', rail: '#4a4038' };
+const ISO_BLD = (dark, sat) => ['interpolate', ['linear'], ['coalesce', ['get', 'render_height'], 8],
+  0, sat ? '#c98f6a' : dark ? '#8a5a40' : '#e0a57a', 18, sat ? '#cdb894' : dark ? '#7a6c55' : '#d8c39c', 45, sat ? '#9fb0c2' : dark ? '#56657a' : '#a9b9cc'];
+const ISO_LABEL = /place|water_name/; // izometrikte yalnızca yer adları kalır
+const ISO_ORIG = {}; // katman → { renk dışı özellik: özgün değer } (renkler THEME_ORIG'den geri yüklenir)
+function isoPaint(id, k, v) {
+  if (!map.getLayer(id)) return;
+  if (!/color/.test(k)) { const o = (ISO_ORIG[id] ??= {}); if (!(k in o)) o[k] = map.getPaintProperty(id, k); }
+  try { map.setPaintProperty(id, k, v); } catch {}
+}
+function applyIsoStyle() {
+  if (!isoOn || !map?.style?._loaded) return; // isStyleLoaded() karolar yüklenirken false döner; stilin kendisinin yüklenmesi yeterli
+  const P = isDark() ? ISO_DARK : ISO_PAL, sat = basemap === 'satellite';
+  for (const id of styleLayerIds) {
+    const l = map.getLayer(id); if (!l) continue;
+    if (l.type === 'background') isoPaint(id, 'background-color', P.land);
+    else if (l.type === 'fill') {
+      if (/water/.test(id)) { isoPaint(id, 'fill-color', P.water); isoPaint(id, 'fill-outline-color', P.waterLine); }
+      else if (/wood|forest/.test(id)) isoPaint(id, 'fill-color', P.wood);
+      else if (/park|grass|landcover|cemetery|pitch|landuse/.test(id)) isoPaint(id, 'fill-color', /sand|beach/.test(id) ? P.sand : P.grass);
+      else if (id === 'building') isoPaint(id, 'fill-color', ISO_PAL.sand);
+    } else if (l.type === 'line') {
+      if (/water|river|stream/.test(id)) isoPaint(id, 'line-color', P.waterLine);
+      else if (/casing/.test(id)) isoPaint(id, 'line-color', P.roadCase);
+      else if (/rail|transit/.test(id)) isoPaint(id, 'line-color', P.rail);
+      else if (/road|highway|street|path|bridge|tunnel|motorway|primary|secondary|tertiary|minor|service|trunk/.test(id)) isoPaint(id, 'line-color', P.road);
+    } else if (l.type === 'fill-extrusion') {
+      isoPaint(id, 'fill-extrusion-color', ISO_BLD(isDark(), sat));
+      isoPaint(id, 'fill-extrusion-opacity', sat ? 0.82 : 1);
+      isoPaint(id, 'fill-extrusion-vertical-gradient', true);
+    }
+  }
+  isoPaint('a3-hillshade', 'hillshade-exaggeration', 0.9);
+  isoPaint('a3-hillshade', 'hillshade-shadow-color', isDark() ? '#000000' : '#6b5a3a');
+  isoPaint('a3-hillshade', 'hillshade-accent-color', isDark() ? '#000000' : '#6b5a3a');
+  if (map.getLayer('a3-sat')) { isoPaint('a3-sat', 'raster-saturation', 0.25); isoPaint('a3-sat', 'raster-contrast', 0.15); }
+  // Yandan sabit ışık: duvarlar çatıdan belirgin koyu, iki tonlu "SimCity" görünümü
+  try { if (!isoLight) isoLight = map.getLight() || {}; map.setLight({ anchor: 'map', position: [1.4, 300, 35], color: '#fff6e0', intensity: 0.55 }); } catch {}
+}
+function restoreIsoStyle() {
+  for (const [id, props] of Object.entries(ISO_ORIG)) {
+    if (!map.getLayer(id)) continue;
+    for (const [k, v] of Object.entries(props)) { try { map.setPaintProperty(id, k, v); } catch {} }
+  }
+  for (const k of Object.keys(ISO_ORIG)) delete ISO_ORIG[k];
+  try { if (isoLight) map.setLight(isoLight); isoLight = null; } catch {}
+  applyMapTheme(); // renkler temaya göre özgün değerlerine döner
+}
+function setIso(on) {
+  if (!map || on === isoOn) return;
+  isoOn = on;
+  document.body.classList.toggle('iso', on);
+  if ($('opt-iso')) $('opt-iso').checked = on;
+  if (on) {
+    isoPrev = { pitch: map.getPitch(), bearing: map.getBearing() };
+    map.setPixelRatio(ISO_CAM.pixelRatio);
+    map.setVerticalFieldOfView?.(ISO_CAM.fov);
+    // Eğim haritası ve eş yükselti eğrileri izometrik resmi bozmasın diye geçici gizlenir (tikler değişmez)
+    for (const id of ['a3-slope', 'a3-contour-line', 'a3-contour-label']) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
+    applyBasemap(); applyIsoStyle();
+    map.easeTo({ pitch: ISO_CAM.pitch, bearing: ISO_CAM.bearing, zoom: Math.max(map.getZoom(), 14), duration: 900 });
+    toast('İzometrik görünüm', 1500);
+  } else {
+    map.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+    map.setVerticalFieldOfView?.(DEFAULT_FOV);
+    restoreIsoStyle(); applyBasemap();
+    if (typeof applyTerrainOpts === 'function') applyTerrainOpts();
+    const p = isoPrev || { pitch: PITCH_3D, bearing: -20 };
+    map.easeTo({ pitch: p.pitch, bearing: p.bearing, duration: 700 });
+  }
+  updateTilt();
+}
+if ($('opt-iso')) $('opt-iso').onchange = e => setIso(e.target.checked);
+
 /* ----- Hızlı katman paneli: rota ve navigasyon ekranında da harita türü ve katmanlar değiştirilebilsin ----- */
 // Satırlar ana katman menüsündeki tiklere bağlıdır: değişiklik oradaki tik üzerinden uygulanır, iki yer hep aynı kalır.
-const QL_ROWS = [['opt-terrain', 'landscape', '3D arazi'], ['opt-buildings', 'apartment', '3D binalar'], ['opt-labels', 'label', 'Etiketler'], ['opt-traffic', 'traffic', 'Canlı trafik'], ['opt-slope', 'trending_up', 'Eğim haritası'], ['opt-contours', 'terrain', 'Eş yükselti eğrileri']];
+const QL_ROWS = [['opt-terrain', 'landscape', '3D arazi'], ['opt-buildings', 'apartment', '3D binalar'], ['opt-labels', 'label', 'Etiketler'], ['opt-iso', 'grid_view', 'İzometrik görünüm'], ['opt-traffic', 'traffic', 'Canlı trafik'], ['opt-slope', 'trending_up', 'Eğim haritası'], ['opt-contours', 'terrain', 'Eş yükselti eğrileri']];
 function renderQuickLayers() {
   const box = $('qlayers');
   const rows = QL_ROWS.filter(([id]) => $(id) && !$(id).closest('.lp-toggle')?.hidden); // ör. trafik anahtarı yoksa satır gösterilmez
@@ -1104,6 +1189,7 @@ const PITCH_HORIZON = 82;
 const tiltMode = p => p > 72 ? 'horizon' : p > 10 ? '3d' : '2d';
 function updateTilt() {
   const m = tiltMode(map.getPitch()), b = $('tilt');
+  if (isoOn) { b.textContent = 'İzo'; b.classList.add('on'); b.classList.remove('hz'); b.setAttribute('aria-pressed', true); b.title = 'İzometrik görünüm · 3D için dokunun'; return; }
   b.textContent = m === 'horizon' ? 'Ufuk' : m === '3d' ? '3D' : '2D';
   b.classList.toggle('on', m !== '2d'); b.classList.toggle('hz', m === 'horizon'); b.setAttribute('aria-pressed', m !== '2d');
   b.title = m === 'horizon' ? 'Ufuk görünümü · 2D için dokunun' : m === '3d' ? '3D görünüm · ufuk görünümü için dokunun' : '2D görünüm · 3D için dokunun';
@@ -1113,6 +1199,7 @@ $('zoom-in').onclick = () => map?.zoomIn();
 $('zoom-out').onclick = () => map?.zoomOut();
 $('tilt').onclick = () => {
   if (!map) return;
+  if (isoOn) { setIso(false); return; } // izometrikten çıkınca önceki kameraya dönülür
   const m = tiltMode(navActive && navFollow ? navPitch : map.getPitch());
   const next = m === '2d' ? 60 : m === '3d' ? PITCH_HORIZON : 0;
   if (navActive) {
@@ -1505,6 +1592,7 @@ async function startNav() {
     dir.from = ME; if (!(await computeRoute({ quiet: true }))) { toast('Rota yenilenemedi.'); return; }
     refreshDirResults();
   }
+  setIso(false); // navigasyon kendi kamerasını kullanır
   navRoute = dir.routes[dir.sel]; navActive = true; navAnnounced = new Set(); navOff = 0; navFollow = true; navLastIdx = 0;
   body.classList.add('navigating'); hideCtx(); document.documentElement.style.setProperty('--sheet-h', '0px');
   $('nav-top').hidden = false; $('nav-bottom').hidden = false;

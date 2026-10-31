@@ -8,16 +8,29 @@
 const ESER_URL = '/data/heritage/kulturenvanteri.json';
 // Aile sırası veri dosyasındaki "aile" dizisiyle aynıdır
 const ESER_AILE = [
-  { id: 'dini', ad: 'Dinî yapılar', renk: '#1f4e96', simge: 'mosque' },
-  { id: 'mezar', ad: 'Türbe ve anıtlar', renk: '#6b3d6e', simge: 'deceased' },
-  { id: 'askeri', ad: 'Kale ve surlar', renk: '#b0352b', simge: 'castle' },
-  { id: 'antik', ad: 'Antik yerler', renk: '#8a5a2b', simge: 'account_balance' },
-  { id: 'su', ad: 'Çeşme ve hamamlar', renk: '#11807c', simge: 'water_drop' },
-  { id: 'ticari', ad: 'Han ve çarşılar', renk: '#a87412', simge: 'storefront' },
-  { id: 'sivil', ad: 'Sivil yapılar', renk: '#5b6b2f', simge: 'house' },
-  { id: 'ulasim', ad: 'Köprüler', renk: '#3d5a73', simge: 'kopru' }, // yazı tipinde köprü simgesi yok: elle çizilir
-  { id: 'diger', ad: 'Diğer', renk: '#6e6a63', simge: 'location_on' }
+  { id: 'dini', ad: 'Dinî yapılar', renk: '#1f4e96', simge: 'cami', ms: 'mosque' },
+  { id: 'mezar', ad: 'Türbe ve anıtlar', renk: '#6b3d6e', simge: 'turbe', ms: 'deceased' },
+  { id: 'askeri', ad: 'Kale ve surlar', renk: '#b0352b', simge: 'kale', ms: 'castle' },
+  { id: 'antik', ad: 'Antik yerler', renk: '#8a5a2b', simge: 'antik', ms: 'account_balance' },
+  { id: 'su', ad: 'Çeşme ve hamamlar', renk: '#11807c', simge: 'su', ms: 'water_drop' },
+  { id: 'ticari', ad: 'Han ve çarşılar', renk: '#a87412', simge: 'han', ms: 'storefront' },
+  { id: 'sivil', ad: 'Sivil yapılar', renk: '#5b6b2f', simge: 'konak', ms: 'house' },
+  { id: 'ulasim', ad: 'Köprüler', renk: '#3d5a73', simge: 'kopru', ms: 'location_on' },
+  { id: 'diger', ad: 'Diğer', renk: '#6e6a63', simge: 'diger', ms: 'location_on' }
 ];
+// Piktogramlar: 24 birimlik kutuda dolu biçimler, boşluklar evenodd ile oyulur (küçük boyda da net okunur)
+const ESER_GLYPH = {
+  cami: 'M3 21h18v-1.6H3z M5 19.4v-6.2a5 5 0 0 1 10 0v6.2z M9.2 7.2a.8.8 0 1 1 1.6 0v1.1H9.2z M16.6 19.4V8.6l1.15-4.2 1.15 4.2v10.8z M16.1 9.2h3.3v1.1h-3.3z',
+  kilise: 'M11.2 2.5h1.6v2h2v1.5h-2v2.1h-1.6V6h-2V4.5h2z M5 21V12.4l7-5 7 5V21z M10.3 21v-3.6a1.7 1.7 0 0 1 3.4 0V21z',
+  kale: 'M4 21V8h2.6v2.3h1.7V8h2.6v2.3h1.7V8h2.6v2.3h1.7V8H20v13z M9.6 21v-3.4a2.4 2.4 0 0 1 4.8 0V21z M7 13.2h2v2.2H7z M15 13.2h2v2.2h-2z',
+  turbe: 'M6.5 21v-8.6h11V21z M5.4 12.4L12 3.4l6.6 9z M11.3 3.6v-1.6h1.4v1.6z M10.4 21v-3.2a1.6 1.6 0 0 1 3.2 0V21z',
+  antik: 'M2.6 9.2L12 3.6l9.4 5.6z M3.2 10.4h17.6v1.6H3.2z M4.8 12.6h2.4v6.2H4.8z M10.8 12.6h2.4v6.2h-2.4z M16.8 12.6h2.4v6.2h-2.4z M2.6 19.4h18.8V21H2.6z',
+  su: 'M12 2.8c3.4 4.4 6.4 8 6.4 11.6a6.4 6.4 0 0 1-12.8 0c0-3.6 3-7.2 6.4-11.6z M9 14.6a3 3 0 0 0 3 3v-1.5a1.5 1.5 0 0 1-1.5-1.5z',
+  han: 'M2.8 21V8.6h18.4V21z M2.8 7.4V5.6h18.4v1.8z M9 21v-4.4a3 3 0 0 1 6 0V21z M4.8 10.6h2.2v2.4H4.8z M17 10.6h2.2v2.4H17z',
+  konak: 'M3 11.2L12 4l9 7.2z M5.4 12.2h13.2v2.4h1.6v1.8H3.8v-1.8h1.6z M6.2 16.4h11.6V21H6.2z M11 21v-3h2v3z M7.6 12.9h2v1.3h-2z M14.4 12.9h2v1.3h-2z',
+  kopru: 'M1.8 10.2h20.4v2H1.8z M3 12.2h18V20h-3.2v-1.6a5.8 5.8 0 0 0-11.6 0V20H3z',
+  diger: 'M12 3a6.4 6.4 0 0 1 6.4 6.4c0 4.6-6.4 11.6-6.4 11.6S5.6 14 5.6 9.4A6.4 6.4 0 0 1 12 3z M12 7.2a2.2 2.2 0 1 0 0 4.4 2.2 2.2 0 0 0 0-4.4z'
+};
 const ESER_KILISE = new Set(['Kilise', 'Katedral', 'Bazilika', 'Manastır', 'Şapel']);
 const ESER_BOS = new Set(['Kayıp', 'Toprak Altında', 'Su Altında']); // içi boş mühür
 const ESER_LAYERS = ['eser-tul', 'eser-hale', 'eser-yogun', 'eser-nokta', 'eser-secim'];
@@ -47,18 +60,11 @@ function eserYukle() {
 }
 
 /* ----- Mühür ve yıldız çizimleri (yüksek çözünürlüklü tuval → map.addImage) ----- */
-const ESER_PR = 2;
+const ESER_PR = 3; // retina ekranlarda keskin
 function sekizgen(g, cx, cy, r) {
   g.beginPath();
   for (let k = 0; k < 8; k++) { const a = Math.PI / 8 + k * Math.PI / 4; g.lineTo(cx + r * Math.cos(a), cy + r * Math.sin(a)); }
   g.closePath();
-}
-function kopruCiz(g, cx, cy, s, renk) { // tek kemerli taş köprü
-  g.save(); g.strokeStyle = renk; g.lineWidth = s * 0.16; g.lineCap = 'round';
-  g.beginPath(); g.moveTo(cx - s * 0.62, cy - s * 0.12); g.quadraticCurveTo(cx, cy - s * 0.42, cx + s * 0.62, cy - s * 0.12); g.stroke();
-  g.beginPath(); g.moveTo(cx - s * 0.62, cy + s * 0.34); g.lineTo(cx - s * 0.62, cy - s * 0.12); g.moveTo(cx + s * 0.62, cy + s * 0.34); g.lineTo(cx + s * 0.62, cy - s * 0.12); g.stroke();
-  g.beginPath(); g.arc(cx, cy + s * 0.34, s * 0.36, Math.PI, 0); g.stroke();
-  g.restore();
 }
 function muhur(renk, simge, bos) {
   const S = 30 * ESER_PR, c = document.createElement('canvas'); c.width = c.height = S;
@@ -69,16 +75,15 @@ function muhur(renk, simge, bos) {
   sekizgen(g, m, m, 11 * ESER_PR);
   if (bos) { g.fillStyle = '#fbf5e6'; g.fill(); g.lineWidth = 2 * ESER_PR; g.setLineDash([3 * ESER_PR, 2 * ESER_PR]); g.strokeStyle = renk; g.stroke(); g.setLineDash([]); }
   else { g.fillStyle = renk; g.fill(); }
-  const ink = bos ? renk : '#fbf5e6';
-  if (simge === 'kopru') kopruCiz(g, m, m, 9 * ESER_PR, ink);
-  else { g.fillStyle = ink; g.font = `${15 * ESER_PR}px "Material Symbols Outlined"`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(simge, m, m + 0.5 * ESER_PR); }
+  const k = 16 * ESER_PR / 24; // piktogram kutusu
+  g.translate(m - 12 * k, m - 12 * k); g.scale(k, k);
+  g.fillStyle = bos ? renk : '#fbf5e6'; g.fill(new Path2D(ESER_GLYPH[simge]), 'evenodd');
   return { width: S, height: S, data: g.getImageData(0, 0, S, S).data };
 }
-async function eserGorseller() {
-  try { await document.fonts.load(`${15 * ESER_PR}px "Material Symbols Outlined"`, 'mosque'); } catch {}
+function eserGorseller() {
   const add = (id, img) => { if (map.hasImage(id)) map.removeImage(id); map.addImage(id, img, { pixelRatio: ESER_PR }); };
   ESER_AILE.forEach((a, i) => { add(`eser-${i}`, muhur(a.renk, a.simge, false)); add(`eser-${i}-b`, muhur(a.renk, a.simge, true)); });
-  add('eser-kilise', muhur(ESER_AILE[0].renk, 'church', false)); add('eser-kilise-b', muhur(ESER_AILE[0].renk, 'church', true));
+  add('eser-kilise', muhur(ESER_AILE[0].renk, 'kilise', false)); add('eser-kilise-b', muhur(ESER_AILE[0].renk, 'kilise', true));
 }
 
 /* ----- Katmanlar ----- */
@@ -88,7 +93,7 @@ function eserVeri() {
 }
 async function eserKatmanlar() {
   if (map.getSource('eser')) return;
-  await eserGorseller();
+  eserGorseller();
   // Parşömen tülü: altlığı soldurur, işaretler öne çıkar; yer adları tülün üstünde kalır
   map.addSource('eser-tul', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]]] } } });
   const firstSymbol = map.getStyle().layers.find(l => l.type === 'symbol' && !OWN.has(l.id))?.id;
@@ -152,7 +157,6 @@ async function setEser(on) {
     catch { toast('Eserler yüklenemedi. Bağlantını kontrol edip yeniden dene.'); eser.on = false; $('eser-btn').classList.remove('on', 'yukleniyor'); document.body.classList.remove('eser-acik'); return; }
     finally { $('eser-btn').classList.remove('yukleniyor'); }
     if (!eser.on) return;
-    toast(`${nf0.format(eser.data.eser.length)} eser · kaynak: Kültür Envanteri`, 2500);
   }
   if (!map.getSource('eser-secim-src')) map.addSource('eser-secim-src', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
   await eserKatmanlar();
@@ -201,7 +205,7 @@ function eserYer(id) {
 function eserGoster(i) {
   const d = eser.data, S = d.sozluk, e = d.eser[i], a = ESER_AILE[e[13]];
   const turler = (e[5] || []).map(t => S.tur[t]).filter(Boolean);
-  const p = { eser: i, name: e[1], lat: e[3], lon: e[2], cat: turler[0] || a.ad, icon: a.simge === 'kopru' ? 'location_on' : a.simge };
+  const p = { eser: i, name: e[1], lat: e[3], lon: e[2], cat: turler[0] || a.ad, icon: a.ms };
   hideCtx(); currentPlace = p; eser.secili = i;
   eserSecimGoster([e[2], e[3]]);
   const render = el => eserKart(el, p, e, a, turler);
@@ -214,8 +218,7 @@ function eserKart(el, p, e, a, turler) {
   const kultur = (e[6] || []).map(k => S.kultur[k]).filter(x => x && x !== '?');
   const yuzyil = (e[7] || []).map(k => S.yuzyil[k]).filter(Boolean);
   const durum = S.durum[e[8]], yer = eserYer(e[11]);
-  const glyph = a.simge === 'kopru' ? '<svg viewBox="-12 -12 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M-8 -1.5Q0 -6 8 -1.5M-8 5V-1.5M8 5V-1.5"/><path d="M-4.7 5A4.7 4.7 0 0 1 4.7 5"/></svg>'
-    : `<span class="ms">${ESER_KILISE.has(turler[0]) ? 'church' : a.simge}</span>`;
+  const glyph = `<svg viewBox="0 0 24 24" width="46" height="46" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="${ESER_GLYPH[ESER_KILISE.has(turler[0]) && a.id === 'dini' ? 'kilise' : a.simge]}"/></svg>`;
   const satir = (ic, baslik, deger) => deger ? `<div class="eser-row"><span class="ms">${ic}</span><div><small>${baslik}</small>${esc(deger)}</div></div>` : '';
   el.innerHTML = `
     <div class="eser-hero" style="--c:${a.renk}"><div class="eser-muhur">${glyph}</div></div>
@@ -234,9 +237,7 @@ function eserKart(el, p, e, a, turler) {
       ${satir('history_edu', 'Kültür', kultur.join(', '))}
       ${satir('schedule', 'Dönem', yuzyil.join(', '))}
       ${satir('location_on', 'Konum', yer)}
-      <a class="info-row" href="https://kulturenvanteri.com/yer/${encodeURIComponent(e[4])}/" target="_blank" rel="noopener"><span class="ms">open_in_new</span><span>Kültür Envanteri'nde aç<small class="eser-alt">Açıklama, fotoğraflar ve kaynaklar</small></span></a>
-    </div>
-    <div class="mini-note">Eser bilgileri Kültür Envanteri'nden alındı (${esc(eser.data.tarih)}).</div>`;
+    </div>`;
   $('es-dir').onclick = () => openDirections({ to: p });
   $('es-start').onclick = () => openDirections({ to: p, autostart: true });
   $('es-save').onclick = () => { toggleSave(p); eserKart(el, p, e, a, turler); };

@@ -109,58 +109,99 @@ function kolSigdir(ids, sure) {
   ids.forEach(i => b.extend([E[i][2], E[i][3]]));
   map.fitBounds(b, { padding: { top: 170, bottom: 150, left: 40, right: 40 }, pitch: 0, bearing: 0, maxZoom: 15, duration: sure });
 }
+function kolBarAlt() {
+  const k = kol.secili, o = kol.oynat, F = eser.data.feats;
+  const i = o.sira[o.adim - 1], e = i != null ? eser.data.eser[i] : null, p = i != null ? F[i].properties : null;
+  return o.tur === 'yil' ? `<b class="kol-yil">${p ? p.y : ''}</b> ${e ? esc(e[1]) : ''}${k.ad === 'Mimar Sinan Yapıları' && p ? ` · <em>${SINAN_DONEM(p.y)}</em>` : ''}`
+    : `<b class="kol-yil">${o.adim}/${o.sira.length}</b> ${e ? esc(e[1]) : ''}`;
+}
 function kolBarCiz() {
   const k = kol.secili; if (!k) return;
   const F = eser.data.feats, yol = kolYolculuk(k), o = kol.oynat;
   const kesin = k.ids.map(i => F[i].properties).filter(p => p.x).map(p => p.y);
   const ilk = Math.min(...kesin), son = Math.max(...kesin), yy = y => y < 0 ? `MÖ ${-y}` : String(y);
-  let alt = `${nf0.format(k.ids.length)} eser${kesin.length ? ` · ${yy(ilk)}–${yy(son)}` : ''}`;
-  if (o) {
-    const i = o.sira[o.adim - 1], e = i != null ? eser.data.eser[i] : null, p = i != null ? F[i].properties : null;
-    alt = o.tur === 'yil' ? `<b class="kol-yil">${p ? p.y : ''}</b> ${e ? esc(e[1]) : ''}${k.ad === 'Mimar Sinan Yapıları' && p ? ` · <em>${SINAN_DONEM(p.y)}</em>` : ''}`
-      : `<b class="kol-yil">${o.adim}/${o.sira.length}</b> ${e ? esc(e[1]) : ''}`;
-  }
-  $('kol-bar').innerHTML = `<span class="ms">${k.tur === 'kultur' ? 'account_balance' : KOL_ROTA.includes(k.ad) ? 'route' : 'architecture'}</span>
+  const alt = o ? kolBarAlt() : `${nf0.format(k.ids.length)} eser${kesin.length ? ` · ${yy(ilk)}–${yy(son)}` : ''}`;
+  $('kol-bar').innerHTML = `<div class="kb-ust"><span class="ms">${k.tur === 'kultur' ? 'account_balance' : KOL_ROTA.includes(k.ad) ? 'route' : 'architecture'}</span>
     <div><b>${esc(k.ad)}</b><small>${alt}</small></div>
-    ${yol ? `<button class="kol-oynat${o ? ' on' : ''}" id="kol-oynat" aria-label="${o ? 'Durdur' : 'Yolculuğu oynat'}" title="${yol.tur === 'yil' ? `Yapım sırasıyla (${yol.kesin} eserin yılı kesin)` : 'Güzergâh boyunca'}"><span class="ms fill">${o ? 'stop' : 'play_arrow'}</span></button>` : ''}
+    ${yol && !o ? `<button class="kol-oynat" id="kol-oynat" aria-label="Yolculuğu oynat" title="${yol.tur === 'yil' ? `Yapım sırasıyla (${yol.kesin} eserin yılı kesin)` : 'Güzergâh boyunca'}"><span class="ms fill">play_arrow</span></button>` : ''}
     <button class="icon-btn" id="kol-liste" aria-label="Koleksiyon listesi"><span class="ms">list</span></button>
-    <button class="icon-btn" id="kol-kapat" aria-label="Koleksiyonu kapat"><span class="ms">close</span></button>`;
+    <button class="icon-btn" id="kol-kapat" aria-label="Koleksiyonu kapat"><span class="ms">close</span></button></div>
+    ${o ? `<div class="kb-kontrol">
+      <button class="icon-btn" id="kol-geri" aria-label="Önceki eser" ${o.adim <= 1 ? 'disabled' : ''}><span class="ms fill">skip_previous</span></button>
+      <button class="kol-oynat${o.durdu ? '' : ' on'}" id="kol-duraklat" aria-label="${o.durdu ? 'Devam et' : 'Duraklat'}"><span class="ms fill">${o.durdu ? 'play_arrow' : 'pause'}</span></button>
+      <button class="icon-btn" id="kol-ileri" aria-label="Sonraki eser" ${o.adim >= o.sira.length ? 'disabled' : ''}><span class="ms fill">skip_next</span></button>
+      <i class="kb-ilerleme"><b style="width:${100 * o.adim / o.sira.length}%"></b></i>
+      <button class="kb-hiz" id="kol-hiz" aria-label="Hız">${kolHizYaz(o.hiz)}</button>
+      <button class="icon-btn" id="kol-bitir" aria-label="Yolculuğu bitir"><span class="ms fill">stop</span></button>
+    </div>` : ''}`;
   $('kol-kapat').onclick = () => kolSec(null);
   $('kol-liste').onclick = () => kolEserListe(k);
-  const ob = $('kol-oynat'); if (ob) ob.onclick = () => kol.oynat ? kolDur() : kolOynat();
+  const ob = $('kol-oynat'); if (ob) ob.onclick = () => kolOynat();
+  if (o) {
+    // adım düğmeleri oynatmayı duraklatır: tek tek, istediğin hızda ilerle
+    $('kol-geri').onclick = () => { kolDuraklat(true); kolAdim(-1); };
+    $('kol-ileri').onclick = () => { kolDuraklat(true); kolAdim(1); };
+    $('kol-duraklat').onclick = () => kolDuraklat();
+    $('kol-hiz').onclick = () => kolHiz();
+    $('kol-bitir').onclick = () => kolDur();
+  }
 }
 
-/* ----- Yolculuğu oynat ----- */
+/* ----- Yolculuğu oynat: hız ayarlı, duraklatılabilir, adım adım ileri/geri ----- */
+const KOL_HIZ = [0.25, 0.5, 1, 2, 4];
+const kolHizYaz = h => h === 0.25 ? '¼×' : h === 0.5 ? '½×' : h + '×';
 function kolOynat() {
   const k = kol.secili, yol = kolYolculuk(k); if (!yol) return;
-  const n = yol.sira.length, aralik = Math.max(110, Math.min(900, 26000 / n)); // uzun koleksiyonlar daha hızlı akar
-  kol.oynat = { ...yol, adim: 0, gorunen: [], zaman: null };
+  const n = yol.sira.length;
+  kol.oynat = { ...yol, adim: 0, gorunen: [], iz: [], zaman: null, durdu: false,
+    temel: Math.max(110, Math.min(900, 26000 / n)), // 1× hızda adım süresi: uzun koleksiyonlar daha hızlı akar
+    hiz: store.get('kol_hiz', 1) };
   map.getSource('kol-iz')?.setData({ type: 'FeatureCollection', features: [] });
   if (map.getLayer('kol-cizgi')) map.setPaintProperty('kol-cizgi', 'line-opacity', 0.25); // güzergâh silik, geçilen kısım koyu
   if (typeof zamanUygula === 'function') zamanUygula();
   kolSigdir(yol.sira, 900);
-  const E = eser.data.eser, iz = [];
-  const adim = () => {
-    const o = kol.oynat; if (!o) return;
-    if (o.adim >= n) { kolDur(); return; }
+  kolBarCiz(); kolAdim(1); kolZamanla();
+}
+function kolZamanla() {
+  const o = kol.oynat; if (!o) return;
+  clearTimeout(o.zaman);
+  if (o.durdu) return;
+  o.zaman = setTimeout(() => { if (!kol.oynat) return; if (o.adim >= o.sira.length) { kolDur(); return; } kolAdim(1); kolZamanla(); }, o.temel / o.hiz);
+}
+// yon: +1 bir sonraki eser, -1 bir önceki
+function kolAdim(yon) {
+  const o = kol.oynat, E = eser.data.eser; if (!o) return;
+  if (yon > 0) {
+    if (o.adim >= o.sira.length) return;
     const i = o.sira[o.adim], once = o.adim ? o.sira[o.adim - 1] : null;
     o.adim++; o.gorunen.push(i);
-    zamanUygula();
-    eserSecimGoster([E[i][2], E[i][3]]);
-    if (once != null) {
-      iz.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: [[E[once][2], E[once][3]], [E[i][2], E[i][3]]] }, properties: {} });
-      // rotada geçilen yol kalır; yapım yolculuğunda yalnızca son birkaç bağ, giderek silikleşir
-      const goster = o.tur === 'rota' ? iz : iz.slice(-4).map((f, j, L) => ({ ...f, properties: { o: 0.2 + 0.7 * (j + 1) / L.length } }));
-      map.getSource('kol-iz').setData({ type: 'FeatureCollection', features: goster });
-    }
-    // görünüm dışına çıkan eserde kamera kayar
-    const p = map.project([E[i][2], E[i][3]]), c = map.getContainer();
-    if (p.x < 40 || p.y < 170 || p.x > c.clientWidth - 40 || p.y > c.clientHeight - 150) map.easeTo({ center: [E[i][2], E[i][3]], duration: Math.min(800, aralik * 0.9) });
-    kolBarCiz();
-    o.zaman = setTimeout(adim, aralik);
-  };
-  adim();
+    if (once != null) o.iz.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: [[E[once][2], E[once][3]], [E[i][2], E[i][3]]] }, properties: {} });
+  } else {
+    if (o.adim <= 1) return;
+    o.adim--; o.gorunen.pop(); o.iz.pop();
+  }
+  const i = o.sira[o.adim - 1];
+  zamanUygula();
+  eserSecimGoster([E[i][2], E[i][3]]);
+  // rotada geçilen yol kalır; yapım yolculuğunda yalnızca son birkaç bağ, giderek silikleşir
+  const goster = o.tur === 'rota' ? o.iz : o.iz.slice(-4).map((f, j, L) => ({ ...f, properties: { o: 0.2 + 0.7 * (j + 1) / L.length } }));
+  map.getSource('kol-iz').setData({ type: 'FeatureCollection', features: goster });
+  // görünüm dışına çıkan eserde kamera kayar
+  const p = map.project([E[i][2], E[i][3]]), c = map.getContainer();
+  if (p.x < 40 || p.y < 200 || p.x > c.clientWidth - 40 || p.y > c.clientHeight - 150) map.easeTo({ center: [E[i][2], E[i][3]], duration: Math.min(800, o.temel / o.hiz * 0.9) });
+  if (document.getElementById('kol-geri')) kolBarGuncelle(); else kolBarCiz();
 }
+// Oynatma sırasında şerit yeniden çizilmez (düğmeler parmağın altından kaybolmasın): yalnızca yazı, ilerleme ve düğme durumları
+function kolBarGuncelle() {
+  const o = kol.oynat; if (!o) return;
+  const sm = document.querySelector('#kol-bar .kb-ust small'); if (sm) sm.innerHTML = kolBarAlt();
+  const b = document.querySelector('#kol-bar .kb-ilerleme b'); if (b) b.style.width = `${100 * o.adim / o.sira.length}%`;
+  $('kol-geri').disabled = o.adim <= 1; $('kol-ileri').disabled = o.adim >= o.sira.length;
+  const d = $('kol-duraklat'); d.classList.toggle('on', !o.durdu); d.setAttribute('aria-label', o.durdu ? 'Devam et' : 'Duraklat'); d.querySelector('.ms').textContent = o.durdu ? 'play_arrow' : 'pause';
+  $('kol-hiz').textContent = kolHizYaz(o.hiz);
+}
+function kolDuraklat(d = !kol.oynat?.durdu) { const o = kol.oynat; if (!o) return; o.durdu = d; if (!d && o.adim >= o.sira.length) { kolDur(true); kolOynat(); return; } kolZamanla(); kolBarGuncelle(); }
+function kolHiz() { const o = kol.oynat; if (!o) return; o.hiz = KOL_HIZ[(KOL_HIZ.indexOf(o.hiz) + 1) % KOL_HIZ.length] || 1; store.set('kol_hiz', o.hiz); kolZamanla(); kolBarGuncelle(); }
 function kolDur(sessiz) {
   const o = kol.oynat; if (!o) return;
   clearTimeout(o.zaman); kol.oynat = null;

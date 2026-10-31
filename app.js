@@ -245,7 +245,7 @@ buildStyle().then(style => {
   map = new maplibregl.Map({
     container: 'map', style, hash: true, ...(savedView || (location.hash ? TR_VIEW : { ...TR_VIEW, pitch: PITCH_3D })),
     maxPitch: 85, pixelRatio: Math.min(devicePixelRatio || 1, 2), fadeDuration: 120,
-    attributionControl: { compact: true }, cancelPendingTileRequestsWhileZooming: true
+    attributionControl: false, cancelPendingTileRequestsWhileZooming: true // telif bilgileri menüdeki "Veri kaynakları"nda
   });
   map.addControl(new maplibregl.ScaleControl({ unit: 'metric', maxWidth: 90 }), 'bottom-right');
   map.on('load', onMapLoad);

@@ -111,7 +111,7 @@ kytDbAc().then(() => kytHepsi()).then(L => L.filter(y => y.acik).forEach(async y
 function kytDugmeCiz() {
   const b = $('kyt-btn'), k = kyt.kayit;
   b.classList.toggle('on', !!k);
-  if (!k) { b.innerHTML = '<span class="kyt-nokta"></span><small>Kaydet</small>'; b.setAttribute('aria-label', 'Yolculuk kaydını başlat'); return; }
+  if (!k) { b.innerHTML = '<span class="kyt-nokta"></span><small>Rotayı kaydet</small>'; b.setAttribute('aria-label', 'Yolculuk kaydını başlat'); return; }
   let m = 0; for (let i = 1; i < k.pts.length; i++) m += haversine([k.pts[i - 1][1], k.pts[i - 1][2]], [k.pts[i][1], k.pts[i][2]]);
   b.innerHTML = `<span class="kyt-kare"></span><b>${kytSure((Date.now() - k.bas) / 1000)}</b><small>${fmtDist(m)}</small>`;
   b.setAttribute('aria-label', 'Kaydı bitir');
@@ -122,6 +122,8 @@ $('kyt-btn').onclick = e => {
   if (confirm('Kayıt bitirilsin mi?')) kytBitir();
 };
 kytDugmeCiz();
+// Düğme rakım kartıyla aynı boyda: kartın yüksekliği içeriğe göre değiştikçe izlenir
+if (window.ResizeObserver) new ResizeObserver(([g]) => { const h = Math.round(g.target.getBoundingClientRect().height); if (h) $('kyt-btn').style.height = h + 'px'; }).observe($('hud'));
 
 /* ----- Kayıtlı yolculuklar (sol menüden) ----- */
 async function kytListe() {

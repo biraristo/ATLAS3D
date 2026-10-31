@@ -194,7 +194,7 @@ KEEP_DISTINCT = {'500X', '500L', 'C4 X', 'C5 X', 'AYGO X', 'Q30', 'QX30', 'Q50',
                  'PROACE VERSO', 'SEAL U', 'SEAL 6', 'DISCOVERY SPORT', 'RANGE ROVER EVOQUE', 'RANGE ROVER SPORT', 'RANGE ROVER VELAR', 'SX4 S-CROSS',
                  'GRAND VITARA', 'GRAND CHEROKEE', 'ZAFIRA TOURER', 'ZAFIRA LIFE', 'JUMPY SPACETOURER', 'VERSO-S', 'CLIO', 'CAPTUR', 'MOKKA', 'KARL', 'ASTRA', 'C4'}
 
-DISPLAY = {'EGEA / TIPO': 'Egea / Tipo', 'COOPER': 'Hatch / Cabrio (Cooper, One)', 'MAZDA2': 'Mazda2', 'MAZDA3': 'Mazda3', 'MAZDA5': 'Mazda5',
+DISPLAY = {'EGEA / TIPO': 'Egea / Tipo', 'OMODA E5': 'Omoda E5', 'COOPER': 'Hatch / Cabrio (Cooper, One)', 'MAZDA2': 'Mazda2', 'MAZDA3': 'Mazda3', 'MAZDA5': 'Mazda5',
            'MAZDA6': 'Mazda6', 'FORTWO': 'Fortwo', 'FORFOUR': 'Forfour', 'GT-R': 'GT-R', 'IONIQ': 'Ioniq', 'GRAND C-MAX': 'Grand C-Max', 'B-MAX': 'B-Max',
            'C-MAX': 'C-Max', 'S-MAX': 'S-Max', 'H-1': 'H-1', 'ZOE': 'Zoe', 'KA': 'Ka', 'MII': 'Mii', 'ION': 'iOn', 'IQ': 'iQ', 'I-MIEV': 'i-MiEV',
            'I3': 'i3', 'I4': 'i4', 'I5': 'i5', 'I7': 'i7', 'I8': 'i8', 'IX': 'iX', 'IX1': 'iX1', 'IX2': 'iX2', 'IX3': 'iX3', 'I10': 'i10', 'I20': 'i20',
@@ -278,6 +278,7 @@ def consumption(x, fuel, pt, year):
 def slug(s):
     return re.sub(r'[^a-z0-9]+', '-', strip_acc(s.lower())).strip('-')
 
+IMPLAUSIBLE = []
 LOGOS = json.load(open(os.path.join(ROOT, 'tools', 'brand_logos.json'))) if os.path.exists(os.path.join(ROOT, 'tools', 'brand_logos.json')) else {}
 
 def main():
@@ -305,8 +306,12 @@ def main():
         if make == 'Citroën' and model and re.match(r'^DS\d', model): make = 'DS'
         if make == 'Chery' and model and model.startswith('OMODA'): make = 'Omoda'
         if make == 'Chery' and model and model.startswith('JAECOO'): make = 'Jaecoo'
-        if make in ('Omoda', 'Jaecoo') and model and ' ' not in model and re.match(r'^\d$', model[-1:]) and not model.startswith(make.upper()):
-            pass
+        if make in ('Omoda', 'Jaecoo') and model and re.match(r'^\d$', model):
+            model = f'{make.upper()} {model}'  # "OMODA" markası altında yalnızca "5", "9" yazılmış kayıtlar
+        if make == 'Omoda' and model == 'EXEED': model = 'OMODA 9'  # aynı araç (Exeed RX), kütle ve motor aynı
+        if make == 'Omoda' and model == 'E5': model = 'OMODA E5'
+        if make == 'Omoda' and model == 'OMODA 5' and fuel_of(x.get('ft'), x.get('fm')) == 'elektrik': model = 'OMODA E5'  # 5 EV = Türkiye'de Omoda E5
+        if make in ('Omoda', 'Jaecoo') and model == make.upper(): dropped['model'] += r; continue  # yalnız marka adı: hangi model olduğu belirsiz
         if make == 'Land Rover' and model == 'ROVER': model = 'RANGE ROVER'
         if not model: dropped['model'] += r; continue
         fuel = fuel_of(x.get('ft'), x.get('fm'))
@@ -401,6 +406,22 @@ def main():
                 # Güç bilgisi eksik kayıtlar, aynı motorun güç bilgili kaydı varsa atılır (bazı ülkelerin eksik/varsayılan girdileri)
                 known = {(v['f'], v['p'], v.get('cc')) for v in vs if v.get('kw')}
                 vs = [v for v in vs if v.get('kw') or (v['f'], v['p'], v.get('cc')) not in known]
+                # Bir üye ülkenin gücü boş, tüketimi hep 5,8 olan yer tutucu kayıtları (VW, Toyota, Chery'de gözlendi)
+                vs = [v for v in vs if not (not v.get('kw') and v.get('c') == 5.8)]
+                # Kütlesine göre fiziksel olarak mümkün olmayan WLTP benzin tüketimi (ör. şarjlı hibritin "benzinli" diye kodlanması)
+                # Kütlesine göre benzinli/hafif hibrit için fazla düşük WLTP tüketimi: güç aktarımı yanlış kodlanmış bir tam hibrittir
+                # (ör. Renault E-Tech, Corolla'nın bazı ülke kayıtları, Mazda2 Hybrid). Tam hibrit olarak işaretlenir; hibrit için de
+                # mümkün olmayan değerler (şarjlı hibritin "benzinli" kodlanması gibi) atılır.
+                bad = []
+                for v in vs:
+                    if v['f'] == 'benzin' and v['p'] in ('ice', 'mhev') and v['b'] == 'w' and v.get('c'):
+                        lim = 3.0 + 0.0012 * v['m']
+                        if v['c'] < 0.75 * lim: bad.append(v); IMPLAUSIBLE.append((make, model, y, v.get('cc'), v.get('kw'), v['m'], v['c'], 'atıldı'))
+                        elif v['c'] < lim: v['p'] = 'hev'; IMPLAUSIBLE.append((make, model, y, v.get('cc'), v.get('kw'), v['m'], v['c'], 'tam hibrit'))
+                vs = [v for v in vs if v not in bad]
+                # Güç bilgisi olmayan, payı küçük kayıtlar (bazı ülkelerin varsayılan/eksik girdileri) aynı yılın güç bilgili kayıtları varken atılır
+                if any(v.get('kw') for v in vs):
+                    vs = [v for v in vs if v.get('kw') or v['r'] >= 0.15 * sum(w['r'] for w in vs)]
                 vs.sort(key=lambda v: (-v['r']))
                 vs = vs[:14]
                 if not vs: continue
@@ -417,6 +438,16 @@ def main():
         json.dump(data, open(os.path.join(OUT, fn), 'w'), ensure_ascii=False, separators=(',', ':'))
         logo = LOGOS.get(make)
         index.append({'n': make, 'f': fn, 'models': len(models), 'reg': make_regs[make], **({'logo': logo} if logo else {})})
+    # Türkiye'de Omoda modelleri Chery bayilerinde satılır: Chery listesinde de görünsün (veri aynı, Omoda kaydından)
+    try:
+        om = json.load(open(os.path.join(OUT, 'omoda.json'))); ch = json.load(open(os.path.join(OUT, 'chery.json')))
+        for m in om['models']:
+            ch['models'].append({**m, 'eq': 'Omoda markası'})
+        ch['models'].sort(key=lambda m: strip_acc(m['n']).lower())
+        json.dump(ch, open(os.path.join(OUT, 'chery.json'), 'w'), ensure_ascii=False, separators=(',', ':'))
+        next(i for i in index if i['n'] == 'Chery')['models'] = len(ch['models'])
+    except (StopIteration, FileNotFoundError):
+        pass
     # Taliant eşlemesi: Logan'ın 2021+ yıllarından
     try:
         dac = json.load(open(os.path.join(OUT, 'dacia.json')))
@@ -434,6 +465,7 @@ def main():
             'years': [2010, 2025], 'makes': index}
     json.dump(meta, open(os.path.join(OUT, 'index.json'), 'w'), ensure_ascii=False, separators=(',', ':'))
     size = sum(os.path.getsize(os.path.join(OUT, f)) for f in os.listdir(OUT))
+    print('güç aktarımı düzeltilen / atılan kayıt:', collections.Counter(x[7] for x in IMPLAUSIBLE)); [print('  ', x) for x in IMPLAUSIBLE if x[7] == 'atıldı'][:20]
     print(f'markalar {len(index)} · motor seçeneği {total_variants} · boyut {size/1e6:.1f} MB')
 
 if __name__ == '__main__':

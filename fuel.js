@@ -46,14 +46,20 @@ const fixVeh = v => {
   if (v.soc == null) v.soc = 100;
   return v;
 };
+// Garaj boş olabilir: o zaman listede görünmeyen "tipik binek araç" ile hesaplanır ve kullanıcıdan araç eklemesi istenir
+const DEFAULT_VEH = pax => fixVeh({ id: '__default', name: 'Tipik binek araç', body: 'sedan', fuel: 'benzin', avg: null, price: null, tank: null, pax: pax || 1, def: true });
 const GARAGE = (() => {
   let list = store.get('vehicles', null), active = store.get('vehicleActive', null);
-  if (!Array.isArray(list) || !list.length) { list = [{ id: 'v' + Date.now().toString(36), name: 'Aracım', body: 'sedan', fuel: 'benzin', avg: null, price: null, tank: null, pax: 1, ...store.get('vehicle', {}) }]; active = list[0].id; }
+  if (!Array.isArray(list)) {
+    const old = store.get('vehicle', null); // eski tek araç kaydı
+    list = old ? [{ id: 'v' + Date.now().toString(36), name: 'Aracım', body: 'sedan', fuel: 'benzin', avg: null, price: null, tank: null, pax: 1, ...old }] : [];
+    active = list[0]?.id || null;
+  }
   list.forEach(fixVeh);
   return { list, active };
 })();
-let VEH = GARAGE.list.find(v => v.id === GARAGE.active) || GARAGE.list[0];
-const saveVeh = () => { store.set('vehicles', GARAGE.list); store.set('vehicleActive', VEH.id); };
+let VEH = GARAGE.list.find(v => v.id === GARAGE.active) || GARAGE.list[0] || DEFAULT_VEH();
+const saveVeh = () => { store.set('vehicles', GARAGE.list); store.set('vehicleActive', VEH.def ? null : VEH.id); };
 function setActiveVehicle(id) {
   const v = GARAGE.list.find(x => x.id === id); if (!v || v === VEH) return;
   v.pax = VEH.pax; VEH = v; saveVeh();

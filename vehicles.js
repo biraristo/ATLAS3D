@@ -177,8 +177,8 @@ function vehFormHtml() {
   const u = FUELS[vehFuel()].unit;
   return `<div class="veh-form" id="veh-form">
     ${GARAGE.list.length > 1 ? `<label class="vf-l">Araç</label>${seg('veh', GARAGE.list.map(v => [v.id, esc(v.name)]), VEH.id)}` : ''}
-    <div class="vf-car"><div><b>${esc(VEH.cat ? `${VEH.cat.mk} ${VEH.cat.md} ${VEH.cat.y}` : VEH.name)}</b><small>${esc(VEH.cat ? catEngine(VEH.cat) : `${BODIES[VEH.body].label} · ${FUELS[VEH.fuel].label} · katalog dışı`)} · tipik ${nf1.format(vehAvg())} ${u}/100${isPhev() ? ' (batarya boşken)' : ''}</small></div>
-      <button type="button" class="btn outline sm" id="vf-edit">${VEH.cat ? 'Değiştir' : 'Aracını seç'}</button></div>
+    <div class="vf-car"><div><b>${esc(VEH.cat ? `${VEH.cat.mk} ${VEH.cat.md} ${VEH.cat.y}` : VEH.def ? 'Araç seçilmedi' : VEH.name)}</b><small>${esc(VEH.cat ? catEngine(VEH.cat) : `${BODIES[VEH.body].label} · ${FUELS[VEH.fuel].label} · katalog dışı`)} · tipik ${nf1.format(vehAvg())} ${u}/100${isPhev() ? ' (batarya boşken)' : ''}</small></div>
+      <button type="button" class="btn ${VEH.def ? 'primary' : 'outline'} sm" id="vf-edit">${VEH.cat ? 'Değiştir' : VEH.def ? 'Aracını ekle' : 'Aracını seç'}</button></div>
     <label class="vf-l">Sürüş tarzı</label>${seg('style', Object.entries(DRIVE_STYLES).map(([k, s]) => [k, s.label]), FSET.style)}
     <div class="vf-grid">
       <div class="vf-f"><span>Yolcu (sürücü dahil)</span><span class="vf-step"><button type="button" id="vf-minus" aria-label="Azalt">−</button><b>${VEH.pax}</b><button type="button" id="vf-plus" aria-label="Artır">+</button></span></div>
@@ -206,6 +206,7 @@ function openGarage({ push = false } = {}) {
   closeDrawer?.();
   const render = el => {
     el.innerHTML = `<div class="list-head drag-zone"><h2>Araçlarım</h2><small>Rota maliyeti ve anlık tüketim seçili araca göre hesaplanır</small></div>
+      ${GARAGE.list.length ? '' : `<div class="gv-empty"><span class="gv-img sil">${SIL.car}</span><div><b>Henüz araç eklemedin</b><small>Şimdilik hesaplar tipik bir benzinli sedan (${nf1.format(vehAvg())} L/100 km) ile yapılıyor. Aracını ekle, tüketim ona göre hesaplansın.</small></div></div>`}
       <div class="gv-list">${GARAGE.list.map(v => {
         const u = FUELS[vehFuel(v)].unit, pers = personal(v);
         return `<div class="gv ${v === VEH ? 'on' : ''}" data-id="${v.id}">
@@ -231,12 +232,11 @@ function openGarage({ push = false } = {}) {
   openPanel(render, { mode: 'list', push, sheet: 'full' });
 }
 
-// Araç sil: son araç silinirse yerine boş bir "Aracım" konur (hesaplar her zaman bir araçla yapılır)
+// Araç sil: son araç da silinebilir; garaj boşken hesaplar listede görünmeyen tipik bir binek araçla yapılır
 function deleteVehicle(v) {
-  if (!v || !confirm(`${v.name} silinsin mi? Yakıt alımı kayıtları da silinir.`)) return false;
+  if (!v || v.def || !confirm(`${v.name} silinsin mi? Yakıt alımı kayıtları da silinir.`)) return false;
   GARAGE.list.splice(GARAGE.list.indexOf(v), 1);
-  if (!GARAGE.list.length) GARAGE.list.push(fixVeh({ id: 'v' + Date.now().toString(36), name: 'Aracım', body: 'sedan', fuel: 'benzin', pax: 1 }));
-  if (VEH === v) VEH = GARAGE.list[0];
+  if (VEH === v) VEH = GARAGE.list[0] || DEFAULT_VEH(v.pax);
   PHYS_CACHE.delete(v.id); saveVeh(); clearCostCache(); toast(`${v.name} silindi`);
   if (typeof refreshDirResults === 'function' && dir.routes.length) refreshDirResults();
   return true;
@@ -244,6 +244,7 @@ function deleteVehicle(v) {
 
 /* ----- Araç ekle / düzenle ----- */
 function editVehicle(v, { pick = true } = {}) {
+  if (v?.def) v = null; // tipik araç düzenlenmez: yeni araç eklenir
   const isNew = !v;
   const d = v ? JSON.parse(JSON.stringify(v)) : fixVeh({ id: 'v' + Date.now().toString(36), name: '', body: 'sedan', fuel: 'benzin', avg: null, price: null, tank: null, pax: VEH?.pax || 1, fills: [] });
   if (isNew) { d.name = ''; d.autoName = true; }

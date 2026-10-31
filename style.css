@@ -703,6 +703,8 @@ body.navigating.fuel-on .map-ctrls{bottom:calc(205px + var(--safe-b))}
 .gv-img{width:72px;height:48px}
 .gv{flex-wrap:wrap}.gv-m{flex:1 1 160px}
 .gv-a{flex:1 0 100%;justify-content:flex-end;gap:4px;margin:-4px -4px -6px 0}
+.gv-empty{display:flex;align-items:center;gap:14px;margin:12px 16px 4px;padding:14px;border:1px dashed var(--line);border-radius:14px}
+.gv-empty>div{display:flex;flex-direction:column;gap:3px}.gv-empty b{font-weight:500}.gv-empty small{color:var(--muted);font-size:12.5px;line-height:1.45}
 .gv-del{color:var(--muted)}.gv-del:hover{color:var(--red)}
 .ve-img{width:96px;height:60px}
 /* Araç kutusu ve düzenleme */

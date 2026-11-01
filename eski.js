@@ -131,8 +131,7 @@ async function eskiPanel() {
   const bolgeler = [...new Set(diger.map(h => h.bolge))];
   const render = el => {
     el.innerHTML = `
-      <div class="place-head drag-zone"><h1 class="eser-ad">Eski haritalar</h1><div class="sub">Bugünkü haritanın üstüne bindirilir; saydamlığı alttan ayarlayabilirsin.</div>
-        <a class="eski-omo" href="https://www.oldmapsonline.org/en/#position=${Math.max(3, Math.round(map.getZoom()))}/${map.getCenter().lat.toFixed(2)}/${map.getCenter().lng.toFixed(2)}&year=${Math.max(1, atlasYil)}" target="_blank" rel="noopener"><span class="ms">open_in_new</span>Bu bölgenin 500 bin haritası: Old Maps Online</a></div>
+      <div class="place-head drag-zone"><h1 class="eser-ad">Eski haritalar</h1><div class="sub">Bugünkü haritanın üstüne bindirilir; saydamlığı alttan ayarlayabilirsin.</div></div>
       <div class="eski-grup"><h3>Tüm bölge</h3>
         <button class="eski-kart${eski.roma ? ' on' : ''}" data-ozel="roma"><img src="/data/eski/roma.jpg" alt=""><span><b>Roma İmparatorluğu atlası</b><small>MS 200 civarı · Akdeniz</small><em>Antik kentler, yollar ve eyaletler</em></span></button>
         <button class="eski-kart${eski.sinir ? ' on' : ''}" data-ozel="sinir"><img src="/data/eski/sinir.jpg" alt=""><span><b>Tarihî sınırlar</b><small>Yıla göre · ${yilYaz(atlasYil)}</small><em>Devletlerin o yıldaki sınırları; zaman kaydırıcısıyla birlikte değişir</em></span></button>

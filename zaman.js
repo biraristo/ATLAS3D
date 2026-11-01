@@ -90,17 +90,13 @@ function zamanCiz() {
       <div class="zp-mod"><button data-m="birikimli" class="${zaman.mod === 'birikimli' ? 'on' : ''}">Birikimli</button><button data-m="yuzyil" class="${zaman.mod === 'yuzyil' ? 'on' : ''}">O yüzyıl</button></div>
       <label class="zp-tahmin"><input type="checkbox" id="zp-tahmin" ${zaman.tahmin ? 'checked' : ''}> Tahminler</label>
     </div>
-    <div class="zp-not">${nf0.format(tarihsiz)} eserin tarihi bilinmediği için gizli · <a href="${zamanOmoUrl()}" target="_blank" rel="noopener">Bu yılı Old Maps Online'da aç</a></div>`;
+    <div class="zp-not">${nf0.format(tarihsiz)} eserin tarihi bilinmediği için gizli</div>`;
   $('zp-kapat').onclick = () => zamanAcKapat(false);
   const k = $('zp-kay');
   k.oninput = () => { zamanOynatDur(); zamanYil(zY(k.value / 10)); };
   $('zp-oynat').onclick = () => zaman.oynat ? zamanOynatDur(true) : zamanOynat();
   el.querySelectorAll('[data-m]').forEach(b => { b.onclick = () => { zaman.mod = b.dataset.m; zamanUygula(); zamanCiz(); }; });
   $('zp-tahmin').onchange = e => { zaman.tahmin = e.target.checked; zamanUygula(); zamanCiz(); };
-}
-function zamanOmoUrl() {
-  const c = map.getCenter();
-  return `https://www.oldmapsonline.org/en/#position=${Math.max(3, Math.round(map.getZoom()))}/${c.lat.toFixed(2)}/${c.lng.toFixed(2)}&year=${Math.max(1, zaman.yil)}`;
 }
 let zamanCizBekle = 0;
 function zamanYil(y, kaynak) {
@@ -117,7 +113,6 @@ function zamanYil(y, kaynak) {
     el.querySelector('.zp-sayi b').textContent = nf0.format(n);
     el.querySelectorAll('.zp-hist i').forEach((b, j) => b.classList.toggle('on', zKovaOn(j)));
     const k = $('zp-kay'); if (k && document.activeElement !== k) k.value = Math.round(zX(zaman.yil) * 10);
-    const a = el.querySelector('.zp-not a'); if (a) a.href = zamanOmoUrl();
   });
 }
 document.addEventListener('atlas-yil', e => { if (zaman.acik && e.detail.kaynak === 'eski' && e.detail.yil !== zaman.yil) zamanYil(e.detail.yil, 'atlas'); });

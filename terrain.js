@@ -227,7 +227,7 @@ function flyArac(ll, yon = 0) {
   map.addSource('fly-arac', { type: 'geojson', data: veri });
   map.addLayer({ id: 'fly-arac', type: 'symbol', source: 'fly-arac', layout: {
     'icon-image': 'fly-arac', 'icon-rotate': ['get', 'yon'], 'icon-rotation-alignment': 'map', 'icon-pitch-alignment': 'map',
-    'icon-size': ['interpolate', ['linear'], ['zoom'], 10, 0.55, 13, 0.75, 16, 1], 'icon-allow-overlap': true, 'icon-ignore-placement': true } });
+    'icon-size': ['interpolate', ['linear'], ['zoom'], 10, 1.1, 13, 1.45, 16, 1.7], 'icon-allow-overlap': true, 'icon-ignore-placement': true } });
   OWN.add('fly-arac');
 }
 

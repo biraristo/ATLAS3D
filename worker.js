@@ -143,9 +143,15 @@ const routes = {
     const q = clean(p.get('q')); const bb = (p.get('bbox') || '').split(',').map(v => num(v, 3));
     if (!q || bb.length !== 4 || bb.some(v => v === null)) return json([], 400);
     const [w, s, e, n] = bb;
-    const ov = OVERPASS_Q[q] ? await overpassNearby(q, bb, ctx).catch(() => null) : null;
-    if (ov) return ov;
-    return cachedFetch(`${NOMINATIM}/search?format=jsonv2&limit=40&bounded=1&addressdetails=1&extratags=1&accept-language=tr&viewbox=${w},${n},${e},${s}&q=` + encodeURIComponent(q), 86400, ctx, origin);
+    // Herkese açık Overpass sunucuları sık sık dolu: 6 sn içinde yanıt yoksa Nominatim gösterilir,
+    // Overpass arka planda bitip önbelleğe yazılır; aynı alan bir sonraki aramada zengin sonuçla gelir
+    if (OVERPASS_Q[q]) {
+      const is = overpassNearby(q, bb, ctx).catch(() => null);
+      ctx.waitUntil(is);
+      const ov = await Promise.race([is, new Promise(r => setTimeout(() => r(null), 6000))]);
+      if (ov) return ov;
+    }
+    return cachedFetch(`${NOMINATIM}/search?format=jsonv2&limit=40&bounded=1&addressdetails=1&extratags=1&accept-language=tr&viewbox=${w},${n},${e},${s}&q=` + encodeURIComponent(q), OVERPASS_Q[q] ? 3600 : 86400, ctx, origin);
   },
   // Araç görseli: Wikipedia'nın sayfa görseli (yalnız özgür lisanslı Wikimedia Commons dosyaları). 30 gün önbellek.
   // Model adı başlıkta geçmeyen sonuç kabul edilmez; aynı modelin kuşak sayfaları arasından yıla en yakın görsel seçilir.
@@ -203,7 +209,7 @@ const routes = {
 /* ================= Yakındakiler: Overpass =================
    Nominatim kategori aramada metin eşleştirdiği için az ve eksik sonuç verir. Overpass doğrudan OSM etiketlerini sorar:
    alandaki tüm restoranlar, açılış saatleri, telefon, web sitesi. Yanıt Nominatim biçimine çevrilir (arayüz aynı kalır). */
-const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
+const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
 const OVERPASS_Q = {
   restaurant: ['["amenity"~"^(restaurant|fast_food|food_court)$"]'],
   hotel: ['["tourism"~"^(hotel|motel|guest_house|hostel|apartment)$"]'],
@@ -227,7 +233,7 @@ async function overpassNearby(q, bb, ctx) {
   let d = null;
   for (const u of OVERPASS) {
     try {
-      const r = await fetch(u, { method: 'POST', headers: { 'User-Agent': UA, 'content-type': 'application/x-www-form-urlencoded' }, body: 'data=' + encodeURIComponent(body), signal: AbortSignal.timeout(14000) });
+      const r = await fetch(u, { method: 'POST', headers: { 'User-Agent': UA, 'content-type': 'application/x-www-form-urlencoded' }, body: 'data=' + encodeURIComponent(body), signal: AbortSignal.timeout(9000) });
       if (r.ok) { d = await r.json(); break; }
     } catch {}
   }

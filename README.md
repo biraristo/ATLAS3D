@@ -3,7 +3,7 @@
 Telefonda uygulama gibi kurulabilen (PWA) **3D** harita. Rakım ve eğim analizi odaklıdır; yol tarifi, canlı trafik ve köprü/otoyol ücretleri içerir.
 
 ## Özellikler
-- **3D harita:** arazi kabartması, 3D binalar, 2D / 3D / Ufuk kamera modları (ufuk çizgisine kadar eğik görünüm, navigasyonda da), yükseklik abartma (varsayılan 3×), harita ve uydu görünümü; eğim haritası ve eş yükselti eğrileri varsayılan açık (tik ile kapatılabilir); rota ve navigasyon ekranında sağdaki katman tuşuyla harita türü ve katmanlar değiştirilebilir
+- **3D harita:** arazi kabartması, 3D binalar, 2D / 3D / Ufuk kamera modları (ufuk çizgisine kadar eğik görünüm, navigasyonda da), yükseklik abartma (varsayılan 2×; 3×'e kadar), harita ve uydu görünümü; eğim haritası ve eş yükselti eğrileri varsayılan açık (tik ile kapatılabilir); rota ve navigasyon ekranında sağdaki katman tuşuyla harita türü ve katmanlar değiştirilebilir
 - **Arama:** yazarken öneri (Photon, isteğe bağlı Mapbox adresleri), tam arama (Nominatim), koordinatla arama, son aramalar
 - **Yer kartı:** adres, telefon, web sitesi, çalışma saatleri (OSM), rakım ve arazi eğimi, kaydetme, paylaşma
 - **Yakındakiler:** OSM etiketleriyle Overpass'tan (açılış saati, telefon, web dahil; olmazsa Nominatim) restoran, otel, kafe, benzin, market, eczane, hastane, ATM, otopark, cami

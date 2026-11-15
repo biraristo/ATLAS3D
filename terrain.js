@@ -55,10 +55,14 @@ const slopeOpak = () => (opts.slopeStil === 'belirgin' ? 0.8 : 1) * (typeof isDa
 function ensureSlopeLayer() {
   if (map.getLayer('a3-slope')) return;
   map.addSource('a3-slope', { type: 'raster', tiles: slopeTiles(), tileSize: 256, minzoom: 9, maxzoom: 13 });
-  // Gölgelendirmenin altına: kabartma gölgesi renklerin üstünde kalır, yamaçlar düz boya gibi değil arazi gibi görünür
-  const before = map.getLayer('a3-hillshade') ? 'a3-hillshade' : map.getStyle().layers.find(l => l.type === 'line' && !OWN.has(l.id))?.id;
-  map.addLayer({ id: 'a3-slope', type: 'raster', source: 'a3-slope', minzoom: 9, paint: { 'raster-opacity': slopeOpak(), 'raster-fade-duration': 150 } }, before);
+  map.addLayer({ id: 'a3-slope', type: 'raster', source: 'a3-slope', minzoom: 9, paint: { 'raster-opacity': slopeOpak(), 'raster-fade-duration': 150 } }, slopeOnce());
   OWN.add('a3-slope');
+}
+// Doğal: gölgelendirmenin altında (kabartma gölgesi renklerin üstünde, yamaç boya gibi değil arazi gibi görünür).
+// Belirgin: gölgelendirmenin üstünde (analiz renkleri soluklaşmasın).
+function slopeOnce() {
+  const ilkCizgi = map.getStyle().layers.find(l => l.type === 'line' && !OWN.has(l.id))?.id;
+  return opts.slopeStil !== 'belirgin' && map.getLayer('a3-hillshade') ? 'a3-hillshade' : ilkCizgi;
 }
 function slopeStilCiz() {
   const dogal = opts.slopeStil !== 'belirgin';
@@ -72,6 +76,7 @@ function setSlopeStil(s) {
   if (!map?.getSource('a3-slope')) return;
   map.getSource('a3-slope').setTiles(slopeTiles());
   map.setPaintProperty('a3-slope', 'raster-opacity', slopeOpak());
+  map.moveLayer('a3-slope', slopeOnce());
 }
 
 /* ================= Eş yükselti eğrileri (maplibre-contour) ================= */
@@ -98,9 +103,10 @@ function ensureContours() {
 
 /* ================= Arazi seçenekleri ================= */
 // Eğim haritası ve eş yükselti eğrileri varsayılan olarak açıktır; kullanıcı tik ile kapatabilir, seçimi saklanır.
-// (Eski sürümlerden kalan "kapalı" kayıtlar bir kez açığa çekilir.) Yükseklik abartma her açılışta 3× başlar.
+// (Eski sürümlerden kalan "kapalı" kayıtlar bir kez açığa çekilir.) Yükseklik abartma her açılışta 2× başlar:
+// 3×'te MapLibre kameraya yakın karoları eksik hesaplıyor, dağlık yerde ekranın alt kenarında karo kenarları çizgili şerit olarak görünüyor.
 if (!store.get('anaDefaultsV2', false)) { opts.slope = true; opts.contours = true; store.set('anaDefaultsV2', true); store.set('opts', opts); }
-opts.slope ??= true; opts.contours ??= true; opts.exag = 3;
+opts.slope ??= true; opts.contours ??= true; opts.exag = 2;
 function applyTerrainOpts() {
   if (!map?.getLayer('a3-sat')) return;
   if (opts.slope) ensureSlopeLayer();

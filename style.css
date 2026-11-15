@@ -1176,3 +1176,10 @@ body.kyt-kayit .hud{right:200px!important}
 @media (max-width:720px){body.flying.fly-durdu .map-ctrls{bottom:calc(200px + var(--safe-b))}}
 /* Uçuş duraklatılıp masaüstünde kart açıldığında çubuk harita alanının ortasına kayar */
 @media (min-width:721px){body.flying.fly-durdu.panel-open .fly-bar{left:calc(var(--panel-w) + (100vw - var(--panel-w)) / 2);width:min(560px,calc(100vw - var(--panel-w) - 90px))}}
+
+/* Navigasyonda rota boyu tarihî eserler */
+body.navigating .fly-eser{bottom:calc(110px + var(--safe-b))}
+body.navigating.fuel-on .fly-eser{bottom:calc(220px + var(--safe-b))}
+body.navigating.nav-kart .panel{display:flex!important}
+body.navigating.nav-kart .fly-eser{display:none}
+@media (max-width:720px){body.navigating .fly-eser{left:10px;transform:none;width:calc(100vw - 76px)}}

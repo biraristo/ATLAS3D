@@ -482,7 +482,7 @@ if ($('opt-iso')) $('opt-iso').onchange = e => setIso(e.target.checked);
 
 /* ----- Hızlı katman paneli: rota ve navigasyon ekranında da harita türü ve katmanlar değiştirilebilsin ----- */
 // Satırlar ana katman menüsündeki tiklere bağlıdır: değişiklik oradaki tik üzerinden uygulanır, iki yer hep aynı kalır.
-const QL_ROWS = [['opt-terrain', 'landscape', '3D arazi'], ['opt-buildings', 'apartment', '3D binalar'], ['opt-labels', 'label', 'Etiketler'], ['opt-iso', 'grid_view', 'İzometrik görünüm'], ['opt-traffic', 'traffic', 'Canlı trafik'], ['opt-mly', 'photo_camera', 'Sokak fotoğrafları'], ['opt-ocm', 'ev_station', 'Şarj istasyonları'], ['opt-slope', 'trending_up', 'Eğim haritası'], ['opt-contours', 'terrain', 'Eş yükselti eğrileri']];
+const QL_ROWS = [['opt-terrain', 'landscape', '3D arazi'], ['opt-buildings', 'apartment', '3D binalar'], ['opt-labels', 'label', 'Etiketler'], ['opt-iso', 'grid_view', 'İzometrik görünüm'], ['opt-traffic', 'traffic', 'Canlı trafik'], ['opt-roteser', 'account_balance', 'Rotadaki tarihî eserler'], ['opt-mly', 'photo_camera', 'Sokak fotoğrafları'], ['opt-ocm', 'ev_station', 'Şarj istasyonları'], ['opt-slope', 'trending_up', 'Eğim haritası'], ['opt-contours', 'terrain', 'Eş yükselti eğrileri']];
 function renderQuickLayers() {
   const box = $('qlayers');
   const rows = QL_ROWS.filter(([id]) => $(id) && !$(id).closest('.lp-toggle')?.hidden); // ör. trafik anahtarı yoksa satır gösterilmez
@@ -1162,7 +1162,7 @@ function wireMap() {
     if (e.defaultPrevented || suppressClick) return;
     hideCtx(); $('layers-pop').hidden = true;
     if (measuring) { addMeasurePoint([e.lngLat.lng, e.lngLat.lat]); return; }
-    if (navActive) return;
+    if (navActive) { if (eser.ucus && eserTikla(e)) { navFollow = false; body.classList.add('nav-kart'); } return; } // sürüşte yalnızca eser mühürleri açılır
     if (typeof eserTikla === 'function' && eserTikla(e)) return; // tarihî eser mührü ya da kümesi
     if (typeof ekTikla === 'function' && ekTikla(e)) return; // şarj istasyonu ya da sokak fotoğrafı
     // Haritadaki bir yere (POI / yer adı) tıklandı mı?
@@ -1690,12 +1690,14 @@ async function startNav() {
   try { wakeLock = await navigator.wakeLock?.request('screen'); } catch {}
   if (typeof liveFuelStart === 'function') liveFuelStart();
   meListeners.add(navTick); navTick(true);
+  if (typeof navEserHazirla === 'function') navEserHazirla(); // rota boyunca tarihî eserler
   navAltAt = Date.now(); drawRoutes(); setTimeout(() => navAltRefresh(), 60000);
   say(navRoute.steps[0]?.text.replace(' — ', ', ') || 'Navigasyon başladı');
 }
 function stopNav() {
   if (typeof AN !== 'undefined' && AN.open && AN.nav) closeAnalysis();
   navActive = false; meListeners.delete(navTick);
+  if (typeof navEserKapat === 'function') navEserKapat();
   if (typeof liveFuelStop === 'function') liveFuelStop();
   body.classList.remove('navigating');
   ['nav-top', 'nav-bottom', 'nav-next', 'nav-terrain'].forEach(id => { $(id).hidden = true; });
@@ -1703,7 +1705,10 @@ function stopNav() {
   window.speechSynthesis?.cancel(); updateMeMarker(); setSheet(sheetState); fitRoute();
 }
 $('nav-exit').onclick = stopNav;
-$('nav-recenter').onclick = () => { navFollow = true; navTick(true); };
+$('nav-recenter').onclick = () => {
+  if (body.classList.contains('nav-kart')) { closePanel(); body.classList.remove('nav-kart'); eserSecimGoster?.(null); }
+  navFollow = true; navTick(true);
+};
 $('nav-mute').onclick = () => { navMuted = !navMuted; store.set('muted', navMuted); $('nav-mute-icon').textContent = navMuted ? 'volume_off' : 'volume_up'; if (navMuted) window.speechSynthesis?.cancel(); };
 document.getElementById('map').addEventListener('pointerdown', () => { if (navActive) navFollow = false; });
 function say(text) {
@@ -1739,6 +1744,7 @@ async function navTick(force) {
     return;
   }
   const along = s.along, remaining = Math.max(0, r.total - along); navAlong = along;
+  if (typeof navEserTick === 'function') navEserTick(along);
   if (typeof analysisTick === 'function') analysisTick(along);
   if (typeof liveFuelTick === 'function') liveFuelTick(r, along);
   let nextIdx = r.steps.findIndex((st, i) => i > 0 && st.at > along + 3);

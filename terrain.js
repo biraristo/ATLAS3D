@@ -241,22 +241,26 @@ async function flyEserHazirla() {
   const f = fly;
   try { await eserYukle(); } catch { toast('Tarihî eserler yüklenemedi'); return; }
   if (fly !== f || !f.eser) return;
+  await eserRotaKatman();
+  f.yakin ??= rotaEserBul(f.ptAt, f.len);
+  flyEserListe();
+}
+// Rota boyunca eser mühürleri (uçuşta ve navigasyonda): parşömen tülü olmadan, harita etiketleri yerinde kalır
+async function eserRotaKatman() {
   if (!map.getSource('eser-secim-src')) map.addSource('eser-secim-src', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
   await eserKatmanlar();
   eser.ucus = true; eserGorunur(true);
   if (!eser.on) map.setLayoutProperty('eser-tul', 'visibility', 'none'); // uydu/arazi görüntüsü soldurulmasın
-  f.yakin ??= flyEserBul(f);
-  flyEserListe();
 }
 function flyEserGizle() {
   eser.ucus = false;
   if (!eser.on && typeof eserGorunur === 'function') { eserGorunur(false); eserSecimGoster(null); }
 }
 // Rotayı 150 m'de bir örnekle, örnekleri ~2 km'lik ızgaraya koy; her eseri komşu hücrelerdeki örneklerle karşılaştır
-function flyEserBul(f) {
+function rotaEserBul(ptAt, len) {
   const ADIM = 150, H = 0.02, ornek = [], izgara = new Map();
-  for (let d = 0; d <= f.len; d += ADIM) {
-    const p = f.ptAt(d), k = Math.floor(p[0] / H) + ':' + Math.floor(p[1] / H);
+  for (let d = 0; d <= len; d += ADIM) {
+    const p = ptAt(d), k = Math.floor(p[0] / H) + ':' + Math.floor(p[1] / H);
     (izgara.get(k) || izgara.set(k, []).get(k)).push(ornek.length); ornek.push({ p, d });
   }
   const out = [], E = eser.data.eser;
@@ -273,23 +277,55 @@ function flyEserBul(f) {
   }
   return out.sort((a, b) => a.d - b.d);
 }
-// Alt şerit: önümüzdeki 4 km'deki (ve az önce geçilen) en yakın 4 eser
-function flyEserListe() {
-  const f = fly, L = f.yakin; if (!L) return;
-  let lo = 0, hi = L.length; while (lo < hi) { const m = (lo + hi) >> 1; if (L[m].d < f.d - 300) lo = m + 1; else hi = m; }
-  const sec = []; for (let k = lo; k < L.length && L[k].d < f.d + 4000 && sec.length < 4; k++) sec.push(L[k]);
-  const key = sec.map(x => x.i).join(',');
-  if (key === f.eserKey) {
-    $('fly-eser').querySelectorAll('[data-i]').forEach(b => { const x = sec.find(s => s.i === +b.dataset.i); if (x) b.querySelector('em').textContent = flyEserUzak(x); });
+// Alt şerit: önümüzdeki 4 km'deki (ve az önce geçilen) en yakın 4 eser. L: rotaEserBul listesi, d: rotada gelinen yer (m)
+function eserSerit(L, d, st, tikla) {
+  let lo = 0, hi = L.length; while (lo < hi) { const m = (lo + hi) >> 1; if (L[m].d < d - 300) lo = m + 1; else hi = m; }
+  const sec = []; for (let k = lo; k < L.length && L[k].d < d + 4000 && sec.length < 4; k++) sec.push(L[k]);
+  const key = sec.map(x => x.i).join(','), el = $('fly-eser');
+  if (key === st.eserKey) {
+    el.querySelectorAll('[data-i]').forEach(b => { const x = sec.find(s => s.i === +b.dataset.i); if (x) b.querySelector('em').textContent = eserUzak(x, d); });
     return;
   }
-  f.eserKey = key;
-  const el = $('fly-eser'); el.hidden = !sec.length;
+  st.eserKey = key; el.hidden = !sec.length;
   el.innerHTML = sec.map(x => { const e = eser.data.eser[x.i], a = ESER_AILE[e[13]];
-    return `<button data-i="${x.i}" style="--c:${a.renk}"><span class="ms">${x.sol ? 'west' : 'east'}</span><span class="fe-ad">${esc(e[1])}</span><em>${flyEserUzak(x)}</em></button>`; }).join('');
-  el.querySelectorAll('[data-i]').forEach(b => { b.onclick = () => { flyDurdur(true); eserGoster(+b.dataset.i); }; });
+    return `<button data-i="${x.i}" style="--c:${a.renk}"><span class="ms">${x.sol ? 'west' : 'east'}</span><span class="fe-ad">${esc(e[1])}</span><em>${eserUzak(x, d)}</em></button>`; }).join('');
+  el.querySelectorAll('[data-i]').forEach(b => { b.onclick = () => tikla(+b.dataset.i); });
 }
-const flyEserUzak = x => { const ileri = x.d - fly.d; return `${x.sol ? 'Solda' : 'Sağda'} · ${ileri > 50 ? fmtDist(ileri) + ' sonra' : 'şimdi'} · yoldan ${fmtDist(x.m)}`; };
+const eserUzak = (x, d) => { const ileri = x.d - d; return `${x.sol ? 'Solda' : 'Sağda'} · ${ileri > 50 ? fmtDist(ileri) + ' sonra' : 'şimdi'} · yoldan ${fmtDist(x.m)}`; };
+function flyEserListe() { const f = fly; if (f?.yakin) eserSerit(f.yakin, f.d, f, i => { flyDurdur(true); eserGoster(i); }); }
+
+/* ----- Navigasyonda tarihî eserler -----
+   Rotanın 1,2 km yakınındaki eserler haritada görünür; önümüzdeki 4 km'dekiler yönüyle alt şeritte.
+   Dokununca kart açılır (kamera takibi bırakılır; "ortala" ile karta kapanıp sürüşe dönülür). Katmanlar menüsünden kapatılabilir. */
+const navEser = { on: store.get('navEser', true), L: null, r: null, eserKey: '', hazir: false };
+const rotaPtAt = r => d => { let lo = 0, hi = r.cum.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (r.cum[m] < d) lo = m + 1; else hi = m; } const j = Math.max(0, lo - 1);
+  const s = r.cum[j + 1] - r.cum[j] || 1, t = Math.max(0, Math.min(1, (d - r.cum[j]) / s)), A = r.coords[j], B = r.coords[Math.min(j + 1, r.coords.length - 1)];
+  return [A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t]; };
+async function navEserHazirla() {
+  if (!navEser.on || !navActive || navEser.hazir) return;
+  navEser.hazir = true;
+  try { await eserYukle(); await eserRotaKatman(); }
+  catch { navEser.hazir = false; return; }
+  if (!navActive || !navEser.on) { navEserKapat(); return; }
+  navEser.r = navRoute; navEser.L = rotaEserBul(rotaPtAt(navRoute), navRoute.total); navEser.eserKey = '';
+  navEser.hazir = false;
+}
+function navEserTick(along) {
+  if (!navEser.on) return;
+  if (!body.classList.contains('panel-open')) body.classList.remove('nav-kart');
+  if (navEser.r !== navRoute) { navEser.L = null; navEserHazirla(); return; } // yeni ya da yeniden hesaplanan rota
+  if (navEser.L) eserSerit(navEser.L, along, navEser, i => { navFollow = false; body.classList.add('nav-kart'); eserGoster(i); });
+}
+function navEserKapat() {
+  $('fly-eser').hidden = true; navEser.eserKey = ''; navEser.r = null; navEser.L = null; navEser.hazir = false;
+  body.classList.remove('nav-kart'); flyEserGizle();
+}
+$('opt-roteser').checked = navEser.on;
+$('opt-roteser').onchange = e => {
+  navEser.on = e.target.checked; store.set('navEser', navEser.on);
+  if (!navActive) return;
+  if (navEser.on) navEserHazirla(); else navEserKapat();
+};
 
 /* ================= Ölçüm profili ================= */
 $('measure-prof').onclick = async () => {

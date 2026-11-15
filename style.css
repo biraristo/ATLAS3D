@@ -291,12 +291,34 @@ body.navigating .hud{display:none}
 .steep:hover{background:var(--hover)}
 .steep b{font-weight:500;font-size:13.5px;display:block}
 .steep small{color:var(--muted);font-size:12px}
-.fly-bar{position:fixed;z-index:30;left:50%;transform:translateX(-50%);bottom:calc(28px + var(--safe-b));background:var(--bg);border-radius:14px;box-shadow:var(--shadow);display:flex;align-items:center;gap:10px;padding:8px 8px 12px 14px;white-space:nowrap;max-width:calc(100vw - 20px);overflow:hidden}
+.fly-bar{position:fixed;z-index:30;left:50%;transform:translateX(-50%);bottom:calc(20px + var(--safe-b));background:var(--bg);border-radius:16px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:2px;padding:8px 10px 10px;width:min(560px,calc(100vw - 20px))}
 .fly-bar .ms{color:var(--blue)}
-.fly-track{position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--line-2)}
-#fly-prog{height:100%;background:var(--blue);width:0}
+.fly-ust{display:flex;align-items:center;gap:10px;min-width:0}
+#fly-info{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px}
+.fly-serbest{color:var(--blue-d);font-weight:500}
+.fly-play{flex:0 0 40px;height:40px;border-radius:50%;border:0;background:var(--blue);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.fly-play .ms{color:#fff!important;font-size:24px}
+#fly-seek{width:100%;accent-color:var(--blue);margin:4px 0}
+.fly-alt{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.fly-alt>.ms{font-size:20px;color:var(--muted)}
+.fly-hiz{display:flex;background:var(--surface-3);border-radius:999px;padding:2px}
+.fly-hiz button{border:0;background:none;padding:5px 10px;border-radius:999px;font:inherit;font-size:13px;color:var(--text-2);cursor:pointer}
+.fly-hiz button.on{background:var(--bg);color:var(--blue-d);font-weight:600;box-shadow:0 1px 2px #0002}
+.fly-eser-btn{margin-left:auto;display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:none;border-radius:999px;padding:5px 12px 5px 9px;font:inherit;font-size:13px;color:var(--text-2);cursor:pointer}
+.fly-eser-btn .ms{font-size:18px;color:var(--muted)}
+.fly-eser-btn.on{background:#f4ead2;border-color:#d9c69c;color:#5c4213}.fly-eser-btn.on .ms{color:#a87412}
+.fly-eser{position:fixed;z-index:30;left:50%;transform:translateX(-50%);bottom:calc(150px + var(--safe-b));width:min(560px,calc(100vw - 20px));display:flex;flex-direction:column;gap:6px;pointer-events:none}
+.fly-eser button{pointer-events:auto;display:flex;align-items:center;gap:10px;text-align:left;background:rgba(251,245,230,.96);border:0;border-left:5px solid var(--c);border-radius:12px;padding:8px 12px;box-shadow:var(--shadow);cursor:pointer;font:inherit;color:#3b2a12}
+.fly-eser button .ms{color:var(--c);font-size:20px}
+.fe-ad{flex:1;min-width:0;font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fly-eser em{font-style:normal;font-size:12px;color:#6b5a3a;white-space:nowrap}
 body.flying .panel,body.flying .searchbox,body.flying .mapbar,body.flying .hud,body.flying .panel-collapse{visibility:hidden}
 body.flying .map-ctrls{display:none}
+/* Duraklatınca kamera kullanıcıda: kontroller ve eser kartı görünür */
+body.flying.fly-durdu .panel,body.flying.fly-durdu .panel-collapse{visibility:visible}
+body.flying.fly-durdu .map-ctrls{display:flex}
+body.flying.fly-durdu.panel-open .fly-eser{display:none}
+@media (max-width:720px){.fly-eser{bottom:calc(150px + var(--safe-b))}.fly-eser em{display:none}}
 .btn{white-space:nowrap}
 #dir-share{padding:0 10px}
 /* Navigasyon başlığı: dönüş kartı, arazi bandı ve "ardından" alt alta akar (kart uzasa da üst üste binmez) */
@@ -1151,3 +1173,4 @@ body.kyt-kayit .hud{right:200px!important}
 .kyt-yollar li b{font-weight:500;color:var(--muted);white-space:nowrap}
 .kyt-yol-not{padding:14px 20px 0;font-size:13px;color:var(--muted);display:flex;align-items:center;gap:8px}
 .spinner.kucuk{width:14px;height:14px;border-width:2px;margin:0}
+@media (max-width:720px){body.flying.fly-durdu .map-ctrls{bottom:calc(200px + var(--safe-b))}}

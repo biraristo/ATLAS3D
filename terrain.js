@@ -95,44 +95,165 @@ $('opt-exag').oninput = e => {
 $('opt-terrain').onchange = e => { opts.terrain = e.target.checked; store.set('opts', opts); map.setTerrain(opts.terrain ? { source: 'dem', exaggeration: opts.exag } : null); };
 (function waitMap() { if (map?.getLayer?.('a3-sat')) applyTerrainOpts(); else setTimeout(waitMap, 300); })();
 
-/* ================= Rotanın 3D önizlemesi ================= */
-let flyRaf = null;
+/* ================= Rotanın 3D önizlemesi =================
+   Hız seçilebilir (¼×–8×); duraklatınca ya da haritaya dokununca kamera serbest kalır, etraf gezilir, "devam" ile rotaya dönülür.
+   Kaydırıcıyla rotanın herhangi bir yerine atlanır. "Eserler" açıkken rotanın 1,2 km yakınındaki tarihî eserler haritada görünür,
+   yaklaşanlar sağ/sol yönüyle alt şeritte listelenir; dokununca uçuş durur ve eser kartı açılır. */
+const FLY_HIZ = [0.25, 0.5, 1, 2, 4, 8], FLY_YAKIN = 1200;
+let flyRaf = null, fly = null;
 function stopFlyover() {
   if (flyRaf) cancelAnimationFrame(flyRaf); flyRaf = null;
-  $('fly-bar').hidden = true; body.classList.remove('flying'); profMarker?.remove();
+  $('fly-bar').hidden = true; $('fly-eser').hidden = true; body.classList.remove('flying', 'fly-durdu'); profMarker?.remove();
   removeEventListener('keydown', flyKey);
+  if (fly?.eser) flyEserGizle();
+  fly = null;
 }
-const flyKey = e => { if (e.key === 'Escape') stopFlyover(); };
+const flyKey = e => {
+  if (!fly || /INPUT|TEXTAREA/.test(document.activeElement?.tagName) && document.activeElement.type !== 'range') return;
+  if (e.key === 'Escape') stopFlyover();
+  else if (e.key === ' ') { e.preventDefault(); flyDurdur(!fly.durdu); }
+  else if (e.key === '+' || e.key === '=') flyHizSec(Math.min(FLY_HIZ.length - 1, FLY_HIZ.indexOf(fly.hiz) + 1));
+  else if (e.key === '-') flyHizSec(Math.max(0, FLY_HIZ.indexOf(fly.hiz) - 1));
+};
 function flyover(r) {
   if (!r) return; stopFlyover();
   if (!opts.terrain) { opts.terrain = true; $('opt-terrain').checked = true; map.setTerrain({ source: 'dem', exaggeration: opts.exag }); }
-  const len = r.total, dur = Math.min(90000, Math.max(18000, 18000 + len / 1000 * 900));
+  const len = r.total, dur = Math.min(90000, Math.max(18000, 18000 + len / 1000 * 900)); // 1× hızda toplam süre
   const look = Math.min(2500, Math.max(150, len * 0.025)), zoom = Math.max(12.3, Math.min(16.2, 16.6 - Math.log2(look / 150)));
-  const ptAt = d => { let j = 0, lo = 0, hi = r.cum.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (r.cum[m] < d) lo = m + 1; else hi = m; } j = Math.max(0, lo - 1);
+  const ptAt = d => { let lo = 0, hi = r.cum.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (r.cum[m] < d) lo = m + 1; else hi = m; } const j = Math.max(0, lo - 1);
     const s = r.cum[j + 1] - r.cum[j] || 1, t = Math.max(0, Math.min(1, (d - r.cum[j]) / s)), A = r.coords[j], B = r.coords[Math.min(j + 1, r.coords.length - 1)];
     return [A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t]; };
-  let bearing = bearingOf(ptAt(0), ptAt(look)), t0 = null;
+  fly = { r, len, v: len / dur, hiz: store.get('flyHiz', 1), d: 0, durdu: false, donus: false, son: null, look, zoom, ptAt,
+    bearing: bearingOf(ptAt(0), ptAt(look)), eser: store.get('flyEser', true), yakin: null, eserKey: '' };
   if (isMobile()) setSheet('min');
   body.classList.add('flying'); $('fly-bar').hidden = false;
   if (!profMarker) profMarker = new maplibregl.Marker({ element: makeEl('<div class="prof-dot"></div>') });
-  map.jumpTo({ center: ptAt(0), zoom, pitch: 68, bearing });
-  const frame = ts => {
-    t0 ??= ts; const f = Math.min(1, (ts - t0) / dur), e = f < 0.5 ? 2 * f * f : 1 - (-2 * f + 2) ** 2 / 2;
-    const d = e * len, c = ptAt(d), target = bearingOf(c, ptAt(Math.min(len, d + look)));
-    let db = ((target - bearing + 540) % 360) - 180; bearing = (bearing + db * 0.04 + 360) % 360;
-    map.jumpTo({ center: c, zoom, pitch: 68, bearing });
-    profMarker.setLngLat(c).addTo(map);
-    const p = r.profile ? profileAt(r.profile, d) : null;
-    $('fly-info').innerHTML = `<b>${fmtDist(d)}</b> / ${fmtDist(len)}` + (p ? ` · ${nf0.format(Math.round(p.elev))} m · <span style="color:${slopeColor(p.slope)}">${fmtSlope(p.slope)} ${p.slope > 2 ? 'tırmanış' : p.slope < -2 ? 'iniş' : 'düz'}</span>` : '');
-    $('fly-prog').style.width = (f * 100).toFixed(1) + '%';
-    if (f < 1) flyRaf = requestAnimationFrame(frame); else { stopFlyover(); fitRoute(); }
-  };
-  flyRaf = requestAnimationFrame(frame);
+  $('fly-hiz').innerHTML = FLY_HIZ.map((h, k) => `<button data-k="${k}">${h < 1 ? (h === 0.25 ? '¼' : '½') : h}×</button>`).join('');
+  $('fly-hiz').querySelectorAll('[data-k]').forEach(b => { b.onclick = () => flyHizSec(+b.dataset.k); });
+  flyHizSec(Math.max(0, FLY_HIZ.indexOf(fly.hiz)));
+  flyEserDugme();
+  map.jumpTo({ center: ptAt(0), zoom, pitch: 68, bearing: fly.bearing });
+  if (fly.eser) flyEserHazirla();
+  flyRaf = requestAnimationFrame(flyKare);
   addEventListener('keydown', flyKey);
 }
+function flyKare(ts) {
+  const f = fly; if (!f) return;
+  const dt = f.son == null ? 0 : Math.min(100, ts - f.son); f.son = ts;
+  if (!f.durdu && !f.donus) {
+    f.d = Math.min(f.len, f.d + dt * f.v * f.hiz);
+    const c = f.ptAt(f.d), target = bearingOf(c, f.ptAt(Math.min(f.len, f.d + f.look)));
+    const db = ((target - f.bearing + 540) % 360) - 180; f.bearing = (f.bearing + db * Math.min(1, 0.04 * dt / 16.7) + 360) % 360;
+    map.jumpTo({ center: c, zoom: f.zoom, pitch: 68, bearing: f.bearing });
+    profMarker.setLngLat(c).addTo(map);
+  }
+  flyBilgi();
+  if (f.d >= f.len && !f.durdu) { flyDurdur(true); $('fly-info').innerHTML = `<b>Rota sonu</b> · ${fmtDist(f.len)}`; }
+  flyRaf = requestAnimationFrame(flyKare);
+}
+function flyBilgi() {
+  const f = fly, p = f.r.profile ? profileAt(f.r.profile, f.d) : null;
+  if (!f.durdu || f.d < f.len) $('fly-info').innerHTML = (f.durdu ? '<span class="fly-serbest">Duraklatıldı · etrafı gezebilirsin</span> · ' : '') + `<b>${fmtDist(f.d)}</b> / ${fmtDist(f.len)}` +
+    (p && !f.durdu ? ` · ${nf0.format(Math.round(p.elev))} m · <span style="color:${slopeColor(p.slope)}">${fmtSlope(p.slope)} ${p.slope > 2 ? 'tırmanış' : p.slope < -2 ? 'iniş' : 'düz'}</span>` : '');
+  const s = $('fly-seek'); if (document.activeElement !== s) s.value = Math.round(f.d / f.len * 1000);
+  if (f.yakin) flyEserListe();
+}
+// Duraklat: kamera kullanıcıya kalır (döndür, eğ, yakınlaş). Devam: kamera rotadaki yerine uçar, oradan sürer.
+function flyDurdur(durdur) {
+  const f = fly; if (!f || f.durdu === durdur) return;
+  f.durdu = durdur;
+  body.classList.toggle('fly-durdu', durdur);
+  const b = $('fly-play'); b.innerHTML = `<span class="ms fill">${durdur ? 'play_arrow' : 'pause'}</span>`; b.setAttribute('aria-label', durdur ? 'Devam et' : 'Duraklat');
+  if (durdur) return;
+  if (f.d >= f.len) f.d = 0;
+  if (panelMode === 'place' && currentPlace?.eser != null) closePanel();
+  if (typeof eserSecimGoster === 'function') eserSecimGoster(null);
+  const c = f.ptAt(f.d); f.bearing = bearingOf(c, f.ptAt(Math.min(f.len, f.d + f.look)));
+  f.donus = true;
+  map.flyTo({ center: c, zoom: f.zoom, pitch: 68, bearing: f.bearing, duration: 1000, essential: true });
+  map.once('moveend', () => { if (fly === f) { f.donus = false; f.son = null; } });
+}
+function flyHizSec(k) {
+  if (!fly) return; fly.hiz = FLY_HIZ[k]; store.set('flyHiz', fly.hiz);
+  $('fly-hiz').querySelectorAll('[data-k]').forEach(b => b.classList.toggle('on', +b.dataset.k === k));
+}
+$('fly-play').onclick = () => flyDurdur(!fly?.durdu);
 $('fly-stop').onclick = () => { stopFlyover(); fitRoute(); };
-$('map').addEventListener('pointerdown', () => { if (flyRaf) stopFlyover(); });
-$('map').addEventListener('wheel', () => { if (flyRaf) stopFlyover(); }, { passive: true });
+$('fly-seek').oninput = e => {
+  const f = fly; if (!f) return;
+  f.d = +e.target.value / 1000 * f.len; f.durdu = false; flyDurdur(true); // atlarken duraklar; kamera yeni yere gider
+  const c = f.ptAt(f.d); f.bearing = bearingOf(c, f.ptAt(Math.min(f.len, f.d + f.look)));
+  map.jumpTo({ center: c, zoom: f.zoom, pitch: 68, bearing: f.bearing }); profMarker.setLngLat(c);
+};
+// Haritaya dokunmak ya da tekerlek: uçuş durur, kamera serbest. Eser mührüne dokunulduysa kart açılsın; boş yere ilk dokunuş yalnızca duraklatsın.
+$('map').addEventListener('pointerdown', e => {
+  if (!fly || fly.durdu) return;
+  flyDurdur(true);
+  const r = map.getCanvas().getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  const eserVar = map.getLayer('eser-nokta') && map.queryRenderedFeatures([[x - 10, y - 10], [x + 10, y + 10]], { layers: ['eser-nokta'] }).length;
+  if (!eserVar) { suppressClick = true; setTimeout(() => { suppressClick = false; }, 450); }
+});
+$('map').addEventListener('wheel', () => { if (fly && !fly.durdu) flyDurdur(true); }, { passive: true });
+
+/* ----- Uçuşta tarihî eserler ----- */
+function flyEserDugme() { const b = $('fly-eser-btn'); b.classList.toggle('on', !!fly?.eser); b.setAttribute('aria-pressed', !!fly?.eser); }
+$('fly-eser-btn').onclick = () => {
+  if (!fly) return; fly.eser = !fly.eser; store.set('flyEser', fly.eser); flyEserDugme();
+  if (fly.eser) flyEserHazirla(); else { flyEserGizle(); fly.yakin = null; $('fly-eser').hidden = true; }
+};
+async function flyEserHazirla() {
+  const f = fly;
+  try { await eserYukle(); } catch { toast('Tarihî eserler yüklenemedi'); return; }
+  if (fly !== f || !f.eser) return;
+  if (!map.getSource('eser-secim-src')) map.addSource('eser-secim-src', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+  await eserKatmanlar();
+  eser.ucus = true; eserGorunur(true);
+  if (!eser.on) map.setLayoutProperty('eser-tul', 'visibility', 'none'); // uydu/arazi görüntüsü soldurulmasın
+  f.yakin ??= flyEserBul(f);
+  flyEserListe();
+}
+function flyEserGizle() {
+  eser.ucus = false;
+  if (!eser.on && typeof eserGorunur === 'function') { eserGorunur(false); eserSecimGoster(null); }
+}
+// Rotayı 150 m'de bir örnekle, örnekleri ~2 km'lik ızgaraya koy; her eseri komşu hücrelerdeki örneklerle karşılaştır
+function flyEserBul(f) {
+  const ADIM = 150, H = 0.02, ornek = [], izgara = new Map();
+  for (let d = 0; d <= f.len; d += ADIM) {
+    const p = f.ptAt(d), k = Math.floor(p[0] / H) + ':' + Math.floor(p[1] / H);
+    (izgara.get(k) || izgara.set(k, []).get(k)).push(ornek.length); ornek.push({ p, d });
+  }
+  const out = [], E = eser.data.eser;
+  for (let i = 0; i < E.length; i++) {
+    const lon = E[i][2], lat = E[i][3], gx = Math.floor(lon / H), gy = Math.floor(lat / H), kx = Math.cos(lat * Math.PI / 180) * 111320;
+    let en = Infinity, s = -1;
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (const j of izgara.get((gx + a) + ':' + (gy + b)) || []) {
+      const q = ornek[j].p, dd = Math.hypot((lon - q[0]) * kx, (lat - q[1]) * 110540); if (dd < en) { en = dd; s = j; }
+    }
+    if (en > FLY_YAKIN) continue;
+    const A = ornek[s].p, B = ornek[Math.min(ornek.length - 1, s + 1)].p, C = ornek[Math.max(0, s - 1)].p;
+    const yx = (B[0] - C[0]), yy = (B[1] - C[1]), ex = lon - A[0], ey = lat - A[1];
+    out.push({ i, d: ornek[s].d, m: en, sol: yx * ey - yy * ex > 0 });
+  }
+  return out.sort((a, b) => a.d - b.d);
+}
+// Alt şerit: önümüzdeki 4 km'deki (ve az önce geçilen) en yakın 4 eser
+function flyEserListe() {
+  const f = fly, L = f.yakin; if (!L) return;
+  let lo = 0, hi = L.length; while (lo < hi) { const m = (lo + hi) >> 1; if (L[m].d < f.d - 300) lo = m + 1; else hi = m; }
+  const sec = []; for (let k = lo; k < L.length && L[k].d < f.d + 4000 && sec.length < 4; k++) sec.push(L[k]);
+  const key = sec.map(x => x.i).join(',');
+  if (key === f.eserKey) {
+    $('fly-eser').querySelectorAll('[data-i]').forEach(b => { const x = sec.find(s => s.i === +b.dataset.i); if (x) b.querySelector('em').textContent = flyEserUzak(x); });
+    return;
+  }
+  f.eserKey = key;
+  const el = $('fly-eser'); el.hidden = !sec.length;
+  el.innerHTML = sec.map(x => { const e = eser.data.eser[x.i], a = ESER_AILE[e[13]];
+    return `<button data-i="${x.i}" style="--c:${a.renk}"><span class="ms">${x.sol ? 'west' : 'east'}</span><span class="fe-ad">${esc(e[1])}</span><em>${flyEserUzak(x)}</em></button>`; }).join('');
+  el.querySelectorAll('[data-i]').forEach(b => { b.onclick = () => { flyDurdur(true); eserGoster(+b.dataset.i); }; });
+}
+const flyEserUzak = x => { const ileri = x.d - fly.d; return `${x.sol ? 'Solda' : 'Sağda'} · ${ileri > 50 ? fmtDist(ileri) + ' sonra' : 'şimdi'} · yoldan ${fmtDist(x.m)}`; };
 
 /* ================= Ölçüm profili ================= */
 $('measure-prof').onclick = async () => {

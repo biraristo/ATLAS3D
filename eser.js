@@ -202,7 +202,7 @@ function eserBarCiz() {
 
 /* ----- Tıklama ve kart ----- */
 function eserTikla(e) {
-  if (!eser.on || !map.getLayer('eser-nokta')) return false;
+  if (!(eser.on || eser.ucus) || !map.getLayer('eser-nokta')) return false;
   const box = [[e.point.x - 10, e.point.y - 10], [e.point.x + 10, e.point.y + 10]];
   const z = map.getZoom();
   const f = map.queryRenderedFeatures(box, { layers: z >= 12.4 ? ['eser-nokta'] : ['eser-yogun'] })[0];

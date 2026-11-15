@@ -131,6 +131,7 @@ a.info-row:hover,.info-row.copy:hover{background:var(--hover);cursor:pointer}
 .ctrl{width:40px;height:40px;border-radius:8px;border:0;background:var(--bg);box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--muted);padding:0}
 .ctrl:hover{color:var(--text)}
 .ctrl.on{color:var(--blue)}
+#compass{touch-action:none;cursor:grab}
 #compass .ms{color:var(--red);transition:transform .1s}
 .zoom{display:flex;flex-direction:column;border-radius:8px;box-shadow:var(--shadow);overflow:hidden}
 .zoom .ctrl{box-shadow:none;border-radius:0}
@@ -1128,3 +1129,14 @@ body.kyt-kayit .hud{right:200px!important}
 .hud-go{display:none!important}
 .hud{right:auto!important}
 @media (min-width:721px){.hud{left:auto!important;right:188px!important}body.kyt-kayit .hud{right:200px!important}}
+
+/* Ek bağlantılar: MapTiler logosu, sokak fotoğrafı, şarj istasyonu kartı */
+.mt-logo{position:fixed;left:10px;bottom:10px;z-index:3;line-height:0}
+.mt-logo[hidden]{display:none}
+.mt-logo img{height:22px}
+.mly-photo{display:block;width:100%;border-radius:12px;background:#0002;aspect-ratio:4/3;object-fit:cover;margin:8px 0}
+.ocm-conn{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--line,#0001);font-size:13.5px}
+.ocm-conn b{white-space:nowrap}
+.ek-btns{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.ek-btns a,.ek-btns button{flex:1;min-width:130px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 12px;border-radius:999px;border:1px solid var(--line,#0002);background:none;color:inherit;font:inherit;font-size:13.5px;text-decoration:none;cursor:pointer}
+.ek-btns .pri{background:var(--blue,#1a73e8);border-color:transparent;color:#fff}

@@ -35,7 +35,8 @@ async function slopeTile(params) {
       if (band) { const o = (yy * 256 + xx) * 4; out.data[o] = band[0]; out.data[o + 1] = band[1]; out.data[o + 2] = band[2]; out.data[o + 3] = pct >= 35 ? 175 : 140; }
     }
   }
-  return { data: await encodePng(out) };
+  // PNG'ye kodlayıp yeniden çözmek yerine görüntü doğrudan verilir (karo başına ana iş parçacığında onlarca ms kazanç)
+  return { data: typeof createImageBitmap === 'function' ? await createImageBitmap(out) : await encodePng(out) };
 }
 function ensureSlopeLayer() {
   if (map.getLayer('a3-slope')) return;
@@ -50,7 +51,7 @@ let contourReady = null;
 function ensureContours() {
   if (contourReady) return contourReady;
   contourReady = loadScript('https://unpkg.com/maplibre-contour@0.1.1/dist/index.min.js').then(() => {
-    const dem = new mlcontour.DemSource({ url: TERRARIUM[0], encoding: 'terrarium', maxzoom: 13, worker: true });
+    const dem = new mlcontour.DemSource({ url: DEMSRC.url, encoding: 'terrarium', maxzoom: DEMSRC.maxzoom, worker: true });
     dem.setupMaplibre(maplibregl);
     map.addSource('a3-contours', { type: 'vector', maxzoom: 15, tiles: [dem.contourProtocolUrl({
       thresholds: { 9: [200, 1000], 11: [100, 500], 12: [50, 250], 13: [20, 100], 14: [10, 50] },

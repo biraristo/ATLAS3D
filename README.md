@@ -21,14 +21,18 @@ Telefonda uygulama gibi kurulabilen (PWA) **3D** harita. Rakım ve eğim analizi
 - **Yolculuk kaydı:** rakım göstergesinin yanındaki ● düğmesiyle GPS izi kaydedilir (süre ve mesafe canlı, iz haritada kırmızı, ekran açık tutulur, noktalar sürekli IndexedDB'ye yazılır). Sol menüde "Kayıtlı yolculuklar": aylara göre liste, özet, saat saat haritada oynatma (10×–20 dk/sn, zaman kaydırıcısı, hız ve GPS rakımı), yolculuk analizi (rota analizi ekranı: yükseklik profili, eğim dağılımı, tırmanışlar, dik kesitler + ortalama/en yüksek hız, hareket ve mola süresi), zamanlı GPX, ad değiştirme ve silme
 - **Eski haritalar:** Katmanlar menüsünden; Matrakçı Nasuh'un İstanbul'u (1537), Bizans Konstantinopolis'i, 1803 Cedid Atlas, Kiepert'in Anadolu haritaları, 1908 ve 1928 İstanbul, Kahire, İzmir, Kudüs, Roma gibi coğrafi olarak yerleştirilmiş tarihî haritalar bugünkü haritaya bindirilir (saydamlık, "Bugüne bak"); Roma İmparatorluğu atlası (DARE) ve yıla göre tarihî devlet sınırları (OpenHistoricalMap)
 - **Görünüm:** varsayılan aydınlık; menüden Aydınlık / Koyu / Sistem seçilebilir; koyu temada arayüz ve harita renkleri birlikte koyulaşır
+- **Masaüstü / touchpad:** Shift + iki parmak kaydırma haritayı döndürür, Alt + kaydırma eğer; Ctrl + sürükleme ve pusula düğmesini sürükleme de döndürür/eğer; kamera arazinin içine giremez (abartılı arazide yırtılma olmaz)
 - **Araçlar:** mesafe ölçme ve arazi kesiti, rotanın 3D kuş bakışı önizlemesi, sağ tık/uzun basma menüsü
 
 ## Kaynaklar
-Anahtarsız: EPDK günlük akaryakıt ve LPG bayi satış fiyatı bülteni (açık REST servisi) · Open-Meteo (rota boyunca sıcaklık ve rüzgâr) · AB Çevre Ajansı (EEA) yeni binek araç CO₂ izleme verisi (araç kataloğu, derleme sırasında) · JRC `wltp` paketi (WLTC/NEDC hız izleri) · MapLibre GL JS · OpenFreeMap (OpenMapTiles/OSM) · Esri World Imagery · AWS Terrain Tiles · maplibre-contour · Photon · Nominatim · OSRM (routing.openstreetmap.de)
+Anahtarsız: EPDK günlük akaryakıt ve LPG bayi satış fiyatı bülteni (açık REST servisi) · Open-Meteo (rota boyunca sıcaklık ve rüzgâr) · AB Çevre Ajansı (EEA) yeni binek araç CO₂ izleme verisi (araç kataloğu, derleme sırasında) · JRC `wltp` paketi (WLTC/NEDC hız izleri) · MapLibre GL JS · OpenFreeMap (OpenMapTiles/OSM) · Esri World Imagery · Mapterhorn arazi karoları (Copernicus GLO-30; erişilemezse AWS Terrain Tiles) · maplibre-contour · Photon · Nominatim · OSRM (routing.openstreetmap.de)
 
 İsteğe bağlı (Cloudflare → atlas3d → Settings → Variables and Secrets, gizli değişken olarak):
 - `TOMTOM_API_KEY` — canlı trafik, trafiğe göre rotalar, ulaşılabilir alan
 - `MAPBOX_TOKEN` — yazarken adres/kapı numarası önerileri
+- `MAPTILER_KEY` — "Açık hava" topoğrafik altlık (MapTiler outdoor; ücretsiz plan ticari olmayan kullanım içindir, logo haritada gösterilir)
+- `MAPILLARY_TOKEN` — sokak fotoğrafları katmanı (Mapillary istemci jetonu; kapsama çizgileri, noktaya dokununca fotoğraf)
+- `OCM_KEY` — şarj istasyonları katmanı ve elektrikli araçta yakındaki istasyonlar (Open Charge Map; soket tipi ve güç)
 
 Anahtarlar yalnızca sunucuda (Worker) kalır, tarayıcıya gönderilmez.
 

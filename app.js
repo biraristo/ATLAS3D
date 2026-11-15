@@ -183,7 +183,12 @@ const NEARBY = [
 /* ================= Harita ================= */
 const TR_VIEW = { center: [35.2, 39.0], zoom: 5.2, pitch: 0, bearing: 0 };
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services';
-const TERRARIUM = ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'];
+// Yükseklik verisi: Mapterhorn (Copernicus GLO-30, 512 px WebP, anahtarsız). Erişilemezse AWS Terrain Tiles (Mapzen, 256 px PNG) kullanılır.
+// 512 px'lik z12 karo, 256 px'lik dört z13 karoyla aynı çözünürlüktedir: aynı ayrıntı dörtte bir istekle gelir.
+const DEM_AWS = { url: 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png', size: 256, maxzoom: 13, name: 'AWS Terrain Tiles (Mapzen)' };
+const DEM_MT = { url: 'https://tiles.mapterhorn.com/{z}/{x}/{y}.webp', size: 512, maxzoom: 12, name: 'Mapterhorn (Copernicus GLO-30)' };
+let DEMSRC = DEM_MT;
+const demUrl = (src, z, x, y) => src.url.replace('{z}', z).replace('{x}', x).replace('{y}', y);
 const EXAG = 1.2;
 // Yüksek çözünürlüklü ekranlarda (retina) 256 px raster karolar iki kat büyütülüp bulanık görünür.
 // Karo boyutunu 128 bildirmek MapLibre'nin bir üst yakınlaştırma düzeyini istemesini sağlar: ekran pikseli başına bir görüntü pikseli.
@@ -200,6 +205,8 @@ const cfgReady = fetch('/api/config', { cache: 'no-store' }).then(r => r.ok ? r.
 
 async function buildStyle() {
   let style;
+  // Mapterhorn yanıt vermiyorsa (ağ engeli, kesinti) açılışta AWS karolarına dön
+  try { const r = await fetch(demUrl(DEM_MT, 0, 0, 0), { signal: AbortSignal.timeout(3000) }); if (!r.ok) throw 0; } catch { DEMSRC = DEM_AWS; }
   try { style = await (await fetch('https://tiles.openfreemap.org/styles/liberty')).json(); }
   catch { style = { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#f2efe9' } }] }; }
   styleLayerIds = style.layers.map(l => l.id);
@@ -212,8 +219,8 @@ async function buildStyle() {
     if (l.id === 'building-3d' && l.paint) { l.paint['fill-extrusion-color'] = '#e2e0dc'; l.paint['fill-extrusion-opacity'] = 0.85; }
   }
   Object.assign(style.sources, {
-    dem: { type: 'raster-dem', encoding: 'terrarium', tiles: TERRARIUM, tileSize: 256, maxzoom: 13 },
-    hsdem: { type: 'raster-dem', encoding: 'terrarium', tiles: TERRARIUM, tileSize: 256, maxzoom: 14 },
+    dem: { type: 'raster-dem', encoding: 'terrarium', tiles: [DEMSRC.url], tileSize: DEMSRC.size, maxzoom: DEMSRC.maxzoom },
+    hsdem: { type: 'raster-dem', encoding: 'terrarium', tiles: [DEMSRC.url], tileSize: DEMSRC.size, maxzoom: DEMSRC.maxzoom }, // arazi ile aynı karolar: tek indirme
     sat: { type: 'raster', tiles: [`${ESRI}/World_Imagery/MapServer/tile/{z}/{y}/{x}`], tileSize: RASTER_TS, maxzoom: 19, attribution: 'Uydu © Esri, Maxar, Earthstar Geographics' },
     satroads: { type: 'raster', tiles: [`${ESRI}/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}`], tileSize: 256, maxzoom: 19 } // yazılı katman: küçülmesin diye 256
   });
@@ -247,6 +254,7 @@ buildStyle().then(style => {
     maxPitch: 85, pixelRatio: Math.min(devicePixelRatio || 1, 2), fadeDuration: 120,
     attributionControl: false, cancelPendingTileRequestsWhileZooming: true // telif bilgileri menüdeki "Veri kaynakları"nda
   });
+  map.transformCameraUpdate = cameraGuard;
   map.addControl(new maplibregl.ScaleControl({ unit: 'metric', maxWidth: 90 }), 'bottom-right');
   map.on('load', onMapLoad);
   map.on('error', e => console.warn('Harita:', e.error?.message || e));
@@ -277,6 +285,25 @@ buildStyle().then(style => {
   }
   autoLocate();
 });
+
+/* Kamera arazinin içine girmesin. MapLibre'nin kendi koruması küre projeksiyonunda çalışmıyor (kamera yüksekliği NaN dönüyor);
+   abartılı arazide (3×) eğik bakışta kamera yamacın altında kalınca arazi yırtılmış, perde gibi çiziliyordu.
+   Kamera yüksekliği burada hesaplanır; altındaki araziden alçaksa eğim ve yakınlık kamerayı yüzeyin üstünde tutacak kadar azaltılır. */
+function cameraGuard(tr) {
+  if (!map?.terrain || tr.zoom < 9 || tr.pitch < 20) return {};
+  try {
+    const ppm = tr.worldSize / (2 * Math.PI * 6371008.8 * Math.cos(tr.center.lat * Math.PI / 180));
+    const dist = 0.5 / Math.tan(tr.fov * Math.PI / 360) * tr.height / ppm; // kamera–merkez uzaklığı (m)
+    const alt = tr.elevation + Math.cos(tr.pitch * Math.PI / 180) * dist;
+    const cam = tr.getCameraLngLat();
+    const ground = map.terrain.getElevationForLngLatZoom(cam, tr.zoom);
+    if (!Number.isFinite(ground) || !Number.isFinite(alt)) return {};
+    const need = ground + Math.max(15, dist * 0.04);
+    if (alt >= need) return {};
+    const o = map.calculateCameraOptionsFromTo(cam, need, tr.center, tr.elevation);
+    return Number.isFinite(o.pitch) && Number.isFinite(o.zoom) ? { pitch: o.pitch, zoom: o.zoom } : {};
+  } catch { return {}; }
+}
 
 /* Açılışta konum: izin daha önce verildiyse sessizce, verilmediyse tarayıcı izin sorar. Konum gelince oraya 3D uçulur.
    İzin reddedilmişse tekrar sorulmaz ve uyarı gösterilmez; harita kayıtlı / yaklaşık konumda kalır. */
@@ -317,25 +344,27 @@ const BASEMAPS = {
 };
 function applyBasemap() {
   if (!map?.getLayer('a3-sat')) return;
-  const sat = basemap === 'satellite';
+  const sat = basemap === 'satellite', out = basemap === 'outdoor', ras = sat || out; // out: MapTiler açık hava (etiketleri karoda)
   for (const id of styleLayerIds) {
     const l = map.getLayer(id); if (!l) continue;
     let vis = baseVisibility[id];
     // Tarihî eser açıkken haritanın kendi etiketleri gizlenir: yalnızca eserler görünür (Etiketler tiki değişmez)
     const eserAcik = typeof eser !== 'undefined' && eser.on;
-    if (l.type === 'symbol') vis = opts.labels && !eserAcik ? vis : 'none';
+    if (l.type === 'symbol') vis = opts.labels && !eserAcik && !out ? vis : 'none';
     else if (l.type === 'background') vis = 'visible';
-    else if (sat) vis = 'none';
+    else if (ras) vis = 'none';
     if (isoOn && l.type === 'symbol' && !ISO_LABEL.test(id)) vis = 'none';
     if (typeof eski !== 'undefined' && eski.sinir && ESKI_BUGUN.includes(id)) vis = 'none'; // tarihî sınırlar açıkken bugünkü sınır ve ülke adları gizli
     // İzometrik + uydu: gerçek uydu fotoğrafının üstünde 3D binalar durur
     if (id === 'building-3d') vis = (!sat || isoOn) && opts.buildings ? 'visible' : 'none';
-    if (id === 'building') vis = !sat ? 'visible' : 'none';
+    if (id === 'building') vis = !ras ? 'visible' : 'none';
     map.setLayoutProperty(id, 'visibility', vis);
   }
   map.setLayoutProperty('a3-sat', 'visibility', sat ? 'visible' : 'none');
   map.setLayoutProperty('a3-satroads', 'visibility', sat && opts.labels && !isoOn && !(typeof eser !== 'undefined' && eser.on) ? 'visible' : 'none');
-  map.setLayoutProperty('a3-hillshade', 'visibility', sat ? 'none' : 'visible');
+  map.setLayoutProperty('a3-hillshade', 'visibility', ras ? 'none' : 'visible');
+  if (map.getLayer('a3-mt')) map.setLayoutProperty('a3-mt', 'visibility', out ? 'visible' : 'none');
+  if ($('mt-logo')) $('mt-logo').hidden = !out;
   if (!isoOn) map.setPaintProperty('a3-hillshade', 'hillshade-exaggeration', HS_EXAG(0.75));
   if (typeof eserTemaUygula === 'function') eserTemaUygula(); // tarihî eser tülü uyduda daha ince
   applyIsoStyle(); // izometrikte altlık değişince bina renkleri uyduya / haritaya göre ayarlanır
@@ -453,7 +482,7 @@ if ($('opt-iso')) $('opt-iso').onchange = e => setIso(e.target.checked);
 
 /* ----- Hızlı katman paneli: rota ve navigasyon ekranında da harita türü ve katmanlar değiştirilebilsin ----- */
 // Satırlar ana katman menüsündeki tiklere bağlıdır: değişiklik oradaki tik üzerinden uygulanır, iki yer hep aynı kalır.
-const QL_ROWS = [['opt-terrain', 'landscape', '3D arazi'], ['opt-buildings', 'apartment', '3D binalar'], ['opt-labels', 'label', 'Etiketler'], ['opt-iso', 'grid_view', 'İzometrik görünüm'], ['opt-traffic', 'traffic', 'Canlı trafik'], ['opt-slope', 'trending_up', 'Eğim haritası'], ['opt-contours', 'terrain', 'Eş yükselti eğrileri']];
+const QL_ROWS = [['opt-terrain', 'landscape', '3D arazi'], ['opt-buildings', 'apartment', '3D binalar'], ['opt-labels', 'label', 'Etiketler'], ['opt-iso', 'grid_view', 'İzometrik görünüm'], ['opt-traffic', 'traffic', 'Canlı trafik'], ['opt-mly', 'photo_camera', 'Sokak fotoğrafları'], ['opt-ocm', 'ev_station', 'Şarj istasyonları'], ['opt-slope', 'trending_up', 'Eğim haritası'], ['opt-contours', 'terrain', 'Eş yükselti eğrileri']];
 function renderQuickLayers() {
   const box = $('qlayers');
   const rows = QL_ROWS.filter(([id]) => $(id) && !$(id).closest('.lp-toggle')?.hidden); // ör. trafik anahtarı yoksa satır gösterilmez
@@ -477,13 +506,26 @@ const DEM = (() => {
   const cache = new Map(); // "z/x/y" -> Promise<ImageData|null>
   function tile(z, x, y) {
     const key = `${z}/${x}/${y}`;
-    if (!cache.has(key)) cache.set(key, new Promise(ok => {
-      const i = new Image(); i.crossOrigin = 'anonymous';
-      i.onload = () => { const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(i, 0, 0); ok(g.getImageData(0, 0, 256, 256)); };
-      i.onerror = () => ok(null);
-      i.src = TERRARIUM[0].replace('{z}', z).replace('{x}', x).replace('{y}', y);
-    }));
-    return cache.get(key);
+    if (cache.has(key)) { const p = cache.get(key); cache.delete(key); cache.set(key, p); return p; } // son kullanılan sona
+    if (cache.size >= 200) cache.delete(cache.keys().next().value); // karo başına ~256 KB: uzun oturumda bellek şişmesin
+    // 512 px kaynakta 256 px'lik (z,x,y) karo, bir üst düzeydeki karonun çeyreğidir; görüntü bir kez indirilip dört çeyrek ondan kesilir
+    const big = DEMSRC.size === 512 && z > 0;
+    const p = (big ? image(demUrl(DEMSRC, z - 1, x >> 1, y >> 1)) : image(demUrl(DEMSRC, z, x, y)))
+      .then(i => i ? cut(i, big ? (x & 1) * 256 : 0, big ? (y & 1) * 256 : 0) : DEMSRC === DEM_AWS ? null : image(demUrl(DEM_AWS, z, x, y)).then(j => j ? cut(j, 0, 0) : null));
+    cache.set(key, p);
+    return p;
+  }
+  const images = new Map(); // url -> Promise<HTMLImageElement|null> (son 24 kaynak görüntü)
+  function image(url) {
+    if (images.has(url)) return images.get(url);
+    if (images.size >= 24) images.delete(images.keys().next().value);
+    const p = new Promise(ok => { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => ok(i); i.onerror = () => ok(null); i.src = url; });
+    images.set(url, p); return p;
+  }
+  function cut(img, sx, sy) {
+    const c = document.createElement('canvas'); c.width = c.height = 256;
+    const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, sx, sy, 256, 256, 0, 0, 256, 256);
+    return g.getImageData(0, 0, 256, 256);
   }
   function proj(lon, lat, z) {
     const n = 2 ** z, s = Math.sin(lat * Math.PI / 180);
@@ -1122,6 +1164,7 @@ function wireMap() {
     if (measuring) { addMeasurePoint([e.lngLat.lng, e.lngLat.lat]); return; }
     if (navActive) return;
     if (typeof eserTikla === 'function' && eserTikla(e)) return; // tarihî eser mührü ya da kümesi
+    if (typeof ekTikla === 'function' && ekTikla(e)) return; // şarj istasyonu ya da sokak fotoğrafı
     // Haritadaki bir yere (POI / yer adı) tıklandı mı?
     const feats = map.queryRenderedFeatures([[e.point.x - 6, e.point.y - 6], [e.point.x + 6, e.point.y + 6]]).filter(isLabel);
     if (feats.length && panelMode !== 'dir') {
@@ -1139,11 +1182,17 @@ function wireMap() {
     if (panelMode === 'place' || panelMode === 'list') { if (panelMode === 'place' && viewStack.length > 1) goBack(); else closePanel(); return; }
     showPlace({ name: 'İşaretlenmiş konum', lat: e.lngLat.lat, lon: e.lngLat.lng, icon: 'pin_drop', needsReverse: true }, { fly: false });
   });
+  let curPt = null; // imleç altındaki öğe sorgusu pahalı: kare başına en çok bir kez ve harita hareket etmiyorken
   map.on('mousemove', e => {
     if (measuring) { map.getCanvas().style.cursor = 'crosshair'; return; }
     if (navActive) return;
-    map.getCanvas().style.cursor = map.queryRenderedFeatures(e.point).some(f => isLabel(f) || f.layer.id === 'eser-nokta' || f.layer.id === 'eser-yogun') ? 'pointer' : '';
+    const first = !curPt; curPt = e.point; if (!first) return;
+    requestAnimationFrame(() => {
+      const p = curPt; curPt = null; if (!p || map.isMoving()) return;
+      map.getCanvas().style.cursor = map.queryRenderedFeatures(p).some(f => isLabel(f) || f.layer.id === 'eser-nokta' || f.layer.id === 'eser-yogun') ? 'pointer' : '';
+    });
   });
+  wireDesktopCamera();
   map.on('contextmenu', e => { e.preventDefault(); showCtx(e.point, e.lngLat); });
   // Mobilde uzun basma = bağlam menüsü
   let lp = null, lpStart = null;
@@ -1157,6 +1206,37 @@ function wireMap() {
   map.on('touchend', () => clearTimeout(lp));
   map.on('movestart', () => clearTimeout(lp));
 }
+
+/* ----- Masaüstü / touchpad kamera hareketleri -----
+   Touchpad'de sağ tuşla sürüklemek zor: Shift + iki parmak kaydırma haritayı döndürür, Alt + kaydırma eğer.
+   (Ctrl + sürükleme ve Shift + ok tuşları MapLibre'de zaten var.) Pusula düğmesi de sürüklenebilir. */
+const clampPitch = p => Math.max(0, Math.min(map.getMaxPitch(), p));
+function wireDesktopCamera() {
+  map.getCanvasContainer().addEventListener('wheel', e => {
+    if (e.ctrlKey || e.metaKey || !(e.shiftKey || e.altKey) || isoOn) return; // Ctrl = touchpad kıstırma (yakınlaştırma)
+    e.preventDefault(); e.stopPropagation();
+    const k = e.deltaMode === 1 ? 40 : 1, d = (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY) * k;
+    if (!d) return;
+    userMoved = true;
+    if (e.altKey) map.jumpTo({ pitch: clampPitch(map.getPitch() - d * 0.12) });
+    else map.jumpTo({ bearing: map.getBearing() + d * 0.2 });
+  }, { capture: true, passive: false });
+  const c = $('compass'); let st = null;
+  c.addEventListener('pointerdown', e => { st = { x: e.clientX, y: e.clientY, b: map.getBearing(), p: map.getPitch(), drag: false }; c.setPointerCapture(e.pointerId); });
+  c.addEventListener('pointermove', e => {
+    if (!st) return;
+    const dx = e.clientX - st.x, dy = e.clientY - st.y;
+    if (!st.drag && Math.hypot(dx, dy) < 5) return;
+    st.drag = true; userMoved = true;
+    map.jumpTo(isoOn ? { bearing: st.b + dx * 0.6 } : { bearing: st.b + dx * 0.6, pitch: clampPitch(st.p - dy * 0.4) });
+  });
+  const end = () => { if (st?.drag) { compassDragged = true; setTimeout(() => { compassDragged = false; }, 0); } st = null; };
+  c.addEventListener('pointerup', end); c.addEventListener('pointercancel', end);
+  if (matchMedia('(pointer:fine)').matches && !store.get('camHint', false)) {
+    map.once('idle', () => { store.set('camHint', true); toast('Döndürmek için Shift + kaydırma ya da Ctrl + sürükleme · eğmek için Alt + kaydırma', 7000); });
+  }
+}
+let compassDragged = false;
 
 /* ----- Bağlam menüsü ----- */
 function showCtx(point, lngLat) {
@@ -1204,7 +1284,7 @@ function updateTilt() {
   b.classList.toggle('on', m !== '2d'); b.classList.toggle('hz', m === 'horizon'); b.setAttribute('aria-pressed', m !== '2d');
   b.title = m === 'horizon' ? 'Ufuk görünümü · 2D için dokunun' : m === '3d' ? '3D görünüm · ufuk görünümü için dokunun' : '2D görünüm · 3D için dokunun';
 }
-$('compass').onclick = () => map?.easeTo({ bearing: 0, duration: 500 });
+$('compass').onclick = () => { if (!compassDragged) map?.easeTo({ bearing: 0, duration: 500 }); };
 $('zoom-in').onclick = () => map?.zoomIn();
 $('zoom-out').onclick = () => map?.zoomOut();
 $('tilt').onclick = () => {
@@ -1825,6 +1905,7 @@ $('drawer').onclick = e => {
   if (a === 'places') openMyPlaces();
   if (a === 'stations') {
     const ev = VEH.fuel === 'elektrik';
+    if (ev && cfg.ocm && typeof ocmNearby === 'function') { ocmNearby(); return; }
     nearby(ev ? { id: 'ev', label: 'Şarj istasyonları', icon: 'ev_station', q: 'charging station' } : { id: 'fuel', label: VEH.fuel === 'lpg' ? 'Otogaz istasyonları' : 'Benzinlikler', icon: 'local_gas_station', q: 'fuel' });
   }
   if (a === 'range' && typeof openRange === 'function') {
@@ -1841,7 +1922,10 @@ $('drawer').onclick = e => {
     <div class="info">
       <div class="info-row"><span class="ms">map</span><span>Harita ve 3D binalar: OpenFreeMap · © OpenMapTiles · © OpenStreetMap katkıda bulunanlar</span></div>
       <div class="info-row"><span class="ms">satellite_alt</span><span>Uydu: Esri, Maxar, Earthstar Geographics</span></div>
-      <div class="info-row"><span class="ms">landscape</span><span>3D arazi: AWS Terrain Tiles (Mapzen)</span></div>
+      <div class="info-row"><span class="ms">landscape</span><span>3D arazi ve yükseklik: ${DEMSRC.name}</span></div>
+      ${cfg.maptiler ? '<div class="info-row"><span class="ms">hiking</span><span>Açık hava haritası: © MapTiler · © OpenStreetMap katkıda bulunanlar</span></div>' : ''}
+      ${cfg.mapillary ? '<div class="info-row"><span class="ms">photo_camera</span><span>Sokak fotoğrafları: Mapillary (CC BY-SA)</span></div>' : ''}
+      ${cfg.ocm ? '<div class="info-row"><span class="ms">ev_station</span><span>Şarj istasyonları: Open Charge Map (CC BY 4.0)</span></div>' : ''}
       <div class="info-row"><span class="ms">search</span><span>Arama: Photon (Komoot) ve Nominatim${cfg.mapbox ? ' · adres önerileri © Mapbox' : ''}</span></div>
       <div class="info-row"><span class="ms">directions</span><span>Yol tarifi: OSRM · routing.openstreetmap.de (FOSSGIS)</span></div>
       ${cfg.traffic ? '<div class="info-row"><span class="ms">traffic</span><span>Canlı trafik, trafiğe göre rotalar ve ücretsiz yol seçeneği: TomTom</span></div>' : ''}

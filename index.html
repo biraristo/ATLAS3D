@@ -41,6 +41,7 @@
 <script src="./gunluk.js" defer></script>
 <script src="./koleksiyon.js" defer></script>
 <script src="./kayit.js" defer></script>
+<script src="./ekler.js" defer></script>
 </head>
 <body>
 <div id="map" role="application" aria-label="Üç boyutlu harita"></div>
@@ -74,6 +75,8 @@
     <label class="lp-toggle"><input type="checkbox" id="opt-iso"> <span class="ms">grid_view</span> İzometrik görünüm</label>
     <label class="lp-toggle" id="opt-traffic-row" hidden><input type="checkbox" id="opt-traffic"> <span class="ms">traffic</span> Canlı trafik</label>
     <div class="slope-legend tr-legend" id="traffic-legend" hidden><span><i style="background:#16e05f"></i>akıcı</span><span><i style="background:#f29900"></i>yavaş</span><span><i style="background:#ea4335"></i>sıkışık</span><span><i style="background:#a50e0e"></i>durma</span></div>
+    <label class="lp-toggle" id="opt-mly-row" hidden><input type="checkbox" id="opt-mly"> <span class="ms">photo_camera</span> Sokak fotoğrafları</label>
+    <label class="lp-toggle" id="opt-ocm-row" hidden><input type="checkbox" id="opt-ocm"> <span class="ms">ev_station</span> Şarj istasyonları</label>
     <div class="lp-title">Arazi analizi</div>
     <label class="lp-toggle"><input type="checkbox" id="opt-slope" checked> <span class="ms">trending_up</span> Eğim haritası</label>
     <div class="slope-legend" id="slope-legend"><span><i style="background:#a3e635"></i>%5–10</span><span><i style="background:#facc15"></i>%10–20</span><span><i style="background:#f97316"></i>%20–35</span><span><i style="background:#dc2626"></i>%35–60</span><span><i style="background:#7e22ce"></i>%60+</span></div>
@@ -105,7 +108,7 @@
 
 <!-- Harita kontrolleri -->
 <div class="map-ctrls" id="map-ctrls">
-  <button class="ctrl" id="compass" aria-label="Kuzeye çevir" title="Kuzeye çevir"><span class="ms" id="compass-icon">navigation</span></button>
+  <button class="ctrl" id="compass" aria-label="Kuzeye çevir" title="Tıkla: kuzeye çevir · Sürükle: döndür ve eğ"><span class="ms" id="compass-icon">navigation</span></button>
   <button class="ctrl" id="locate" aria-label="Konumumu göster" title="Konumunuz"><span class="ms">my_location</span></button>
   <div class="zoom">
     <button class="ctrl" id="zoom-in" aria-label="Yakınlaştır"><span class="ms">add</span></button>
@@ -114,6 +117,8 @@
   <button class="ctrl ctrl-layers" id="ctrl-layers" aria-label="Katmanlar" title="Harita türü ve katmanlar"><span class="ms">layers</span></button>
   <button class="ctrl tilt on" id="tilt" aria-label="3D görünüm" aria-pressed="true" title="3D görünüm açık · 2D için dokunun">3D</button>
 </div>
+
+<a id="mt-logo" class="mt-logo" hidden href="https://www.maptiler.com" target="_blank" rel="noopener"><img src="https://api.maptiler.com/resources/logo.svg" alt="MapTiler"></a>
 
 <div id="qlayers" class="qlayers" hidden role="dialog" aria-label="Harita türü ve katmanlar"></div>
 

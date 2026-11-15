@@ -9,6 +9,9 @@
 //   /api/fuel          EPDK günlük akaryakıt ve LPG bayi satış fiyatı bülteni (Türkiye ortalaması)
 //   /api/traffic/*     TomTom (TOMTOM_API_KEY varsa): trafik karoları, trafikli rota, ulaşılabilir alan
 //   /api/weather       Open-Meteo: rota boyunca sıcaklık ve rüzgâr (yakıt hesabı)
+//   /api/mly/*         Mapillary (MAPILLARY_TOKEN varsa): sokak fotoğrafı kapsama karoları ve fotoğraf bilgisi
+//   /api/ocm           Open Charge Map (OCM_KEY varsa): harita alanındaki şarj istasyonları
+//   /api/mt/*          MapTiler (MAPTILER_KEY varsa): açık hava (topoğrafik) harita karoları
 //   /api/config        özellik bayrakları + ziyaretçinin yaklaşık konumu (Cloudflare)
 //   /api/health        durum
 import { connect } from 'cloudflare:sockets';
@@ -429,11 +432,91 @@ async function traffic(request, url, env, ctx) {
   return json({ error: 'not-found' }, 404);
 }
 
+/* ================= İsteğe bağlı bağlantılar =================
+   Anahtarlar yalnızca Cloudflare'de gizli değişken olarak tutulur; tarayıcı yalnızca bu uçları görür. Anahtar yoksa uç 404 döner ve arayüzde görünmez. */
+const edgeCached = async (cacheKey, ctx, make) => {
+  const key = new Request('https://atlas3d.cache/' + cacheKey);
+  const hit = await caches.default.match(key); if (hit) return hit;
+  const res = await make();
+  if (res.status === 200) ctx.waitUntil(caches.default.put(key, res.clone()));
+  return res;
+};
+
+// Mapillary: kapsama karoları (yeşil çizgiler ve fotoğraf noktaları) ve tek fotoğrafın bilgisi
+async function mapillary(url, env, ctx) {
+  const key = env.MAPILLARY_TOKEN;
+  if (!key) return json({ error: 'mapillary-disabled' }, 404);
+  const t = url.pathname.match(/^\/api\/mly\/tiles\/(\d{1,2})\/(\d+)\/(\d+)$/);
+  if (t) {
+    const [, z, x, y] = t;
+    if (+z > 14) return new Response(null, { status: 204 });
+    return edgeCached(`mly/t/${z}/${x}/${y}`, ctx, async () => {
+      const r = await fetch(`https://tiles.mapillary.com/maps/vtp/mly1_public/2/${z}/${x}/${y}?access_token=${encodeURIComponent(key)}`);
+      if (!r.ok) return new Response(null, { status: 204, headers: { 'x-upstream': String(r.status), 'cache-control': 'public, max-age=300' } });
+      return new Response(r.body, { headers: { 'content-type': 'application/x-protobuf', 'cache-control': 'public, max-age=86400' } });
+    });
+  }
+  if (url.pathname === '/api/mly/image') {
+    const id = url.searchParams.get('id') || '';
+    if (!/^\d{5,25}$/.test(id)) return json({ error: 'id' }, 400);
+    return edgeCached(`mly/i/${id}`, ctx, async () => {
+      const r = await fetch(`https://graph.mapillary.com/${id}?fields=id,thumb_1024_url,captured_at,compass_angle,computed_geometry,geometry,creator,is_pano`, { headers: { Authorization: 'OAuth ' + key } });
+      if (!r.ok) return json({ error: 'upstream ' + r.status }, r.status === 404 ? 404 : 502);
+      const d = await r.json(), g = d.computed_geometry || d.geometry;
+      // Küçük resim adresleri süreli olduğu için kısa önbellek
+      return json({ id: d.id, url: d.thumb_1024_url || null, at: d.captured_at || null, angle: d.compass_angle ?? null, lon: g?.coordinates?.[0] ?? null, lat: g?.coordinates?.[1] ?? null, by: d.creator?.username || '', pano: Boolean(d.is_pano) }, 200, 'public, max-age=1800');
+    });
+  }
+  return json({ error: 'not-found' }, 404);
+}
+
+// Open Charge Map: sınır kutusundaki şarj istasyonları, sadeleştirilmiş
+const OCM_CONN = { 1: 'Type 1 (J1772)', 2: 'CHAdeMO', 25: 'Type 2', 1036: 'Type 2 (kablolu)', 32: 'CCS (Type 1)', 33: 'CCS (Type 2)', 27: 'Tesla Supercharger', 30: 'Tesla', 28: 'Schuko', 23: 'Schuko' };
+async function chargeMap(p, env, ctx) {
+  const key = env.OCM_KEY;
+  if (!key) return json({ error: 'ocm-disabled' }, 404);
+  const bb = (p.get('bbox') || '').split(',').map(Number); // batı, güney, doğu, kuzey
+  if (bb.length !== 4 || !bb.every(Number.isFinite) || bb[2] <= bb[0] || bb[3] <= bb[1] || bb[2] - bb[0] > 2.5 || bb[3] - bb[1] > 2.5) return json({ error: 'bbox' }, 400);
+  const [w, s, e, n] = bb.map(v => v.toFixed(2));
+  return edgeCached(`ocm/v1/${w},${s},${e},${n}`, ctx, async () => {
+    const r = await fetch(`https://api.openchargemap.io/v3/poi/?output=json&maxresults=300&compact=false&verbose=false&boundingbox=(${n},${w}),(${s},${e})`, { headers: { 'X-API-Key': key, 'User-Agent': UA } });
+    if (!r.ok) return json({ error: 'upstream ' + r.status }, r.status === 429 ? 503 : 502);
+    const list = await r.json();
+    const stations = (Array.isArray(list) ? list : []).map(x => {
+      const a = x.AddressInfo || {};
+      return {
+        id: x.ID, name: a.Title || 'Şarj istasyonu', lat: a.Latitude, lon: a.Longitude,
+        addr: [a.AddressLine1, a.Town, a.StateOrProvince].filter(Boolean).join(', '),
+        op: x.OperatorInfo?.Title && !/unknown/i.test(x.OperatorInfo.Title) ? x.OperatorInfo.Title : '',
+        cost: (x.UsageCost || '').slice(0, 120), ok: x.StatusType?.IsOperational ?? null, pts: x.NumberOfPoints || null,
+        conns: (x.Connections || []).map(c => ({ t: c.ConnectionType?.Title || OCM_CONN[c.ConnectionTypeID] || 'Soket', kw: c.PowerKW || null, q: c.Quantity || 1, dc: c.CurrentTypeID === 30 }))
+      };
+    }).filter(st => Number.isFinite(st.lat) && Number.isFinite(st.lon));
+    return json({ stations, source: 'Open Charge Map' }, 200, 'public, max-age=21600');
+  });
+}
+
+// MapTiler: raster harita karoları (512 px; r=2 ile retina)
+const MT_STYLES = { outdoor: 'outdoor-v2' };
+async function mapTiler(url, env, ctx) {
+  const key = env.MAPTILER_KEY;
+  if (!key) return json({ error: 'maptiler-disabled' }, 404);
+  const t = url.pathname.match(/^\/api\/mt\/([a-z]+)\/(\d{1,2})\/(\d+)\/(\d+)$/);
+  if (!t || !MT_STYLES[t[1]]) return json({ error: 'not-found' }, 404);
+  const [, st, z, x, y] = t, hi = url.searchParams.get('r') === '2';
+  if (+z > 20) return new Response(null, { status: 204 });
+  return edgeCached(`mt/${st}/${hi ? 2 : 1}/${z}/${x}/${y}`, ctx, async () => {
+    const r = await fetch(`https://api.maptiler.com/maps/${MT_STYLES[st]}/${z}/${x}/${y}${hi ? '@2x' : ''}.png?key=${encodeURIComponent(key)}`, { headers: { Referer: url.origin + '/' } });
+    if (!r.ok) return new Response(null, { status: r.status === 403 || r.status === 429 ? 204 : 502, headers: { 'x-upstream': String(r.status) } });
+    return new Response(r.body, { headers: { 'content-type': r.headers.get('content-type') || 'image/png', 'cache-control': 'public, max-age=86400' } });
+  });
+}
+
 // Kötüye kullanım koruması: başka sitelerin tarayıcıdan API'mizi çağırmasını engelle ve IP başına hız sınırı uygula.
 // Sınırlayıcılar wrangler.toml'daki [[ratelimits]] bağlarından gelir; tanımlı değilse sınır uygulanmaz.
 const crossSite = request => request.headers.get('sec-fetch-site') === 'cross-site';
 async function overLimit(request, env, url) {
-  const tile = url.pathname.startsWith('/api/traffic/') && url.pathname.endsWith('.png');
+  const tile = (url.pathname.startsWith('/api/traffic/') && url.pathname.endsWith('.png')) || url.pathname.startsWith('/api/mly/tiles/') || url.pathname.startsWith('/api/mt/');
   const limiter = tile ? env.TILE_LIMIT : env.API_LIMIT;
   if (!limiter?.limit) return false;
   const ip = request.headers.get('cf-connecting-ip') || 'anon';
@@ -444,12 +527,13 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname === '/api/health') {
-      return json({ status: 'ok', traffic: Boolean(env.TOMTOM_API_KEY), mapbox: Boolean(env.MAPBOX_TOKEN), rateLimit: Boolean(env.API_LIMIT?.limit) });
+      return json({ status: 'ok', traffic: Boolean(env.TOMTOM_API_KEY), mapbox: Boolean(env.MAPBOX_TOKEN), mapillary: Boolean(env.MAPILLARY_TOKEN), ocm: Boolean(env.OCM_KEY), maptiler: Boolean(env.MAPTILER_KEY), rateLimit: Boolean(env.API_LIMIT?.limit) });
     }
     if (url.pathname === '/api/config') {
       const cf = request.cf || {};
       return json({
         traffic: Boolean(env.TOMTOM_API_KEY), mapbox: Boolean(env.MAPBOX_TOKEN),
+        mapillary: Boolean(env.MAPILLARY_TOKEN), ocm: Boolean(env.OCM_KEY), maptiler: Boolean(env.MAPTILER_KEY),
         ip: cf.latitude && cf.longitude ? { lat: Number(cf.latitude), lon: Number(cf.longitude), city: cf.city || '' } : null
       });
     }
@@ -467,6 +551,9 @@ export default {
       try { return await traffic(request, url, env, ctx); }
       catch (e) { return json({ error: String(e.message || e) }, 502); }
     }
+    if (url.pathname.startsWith('/api/mly/')) { try { return await mapillary(url, env, ctx); } catch (e) { return json({ error: String(e.message || e) }, 502); } }
+    if (url.pathname === '/api/ocm') { try { return await chargeMap(url.searchParams, env, ctx); } catch (e) { return json({ error: String(e.message || e) }, 502); } }
+    if (url.pathname.startsWith('/api/mt/')) { try { return await mapTiler(url, env, ctx); } catch (e) { return json({ error: String(e.message || e) }, 502); } }
     const handler = routes[url.pathname];
     if (handler) {
       try { return await handler(url.searchParams, ctx, url.origin, env); }

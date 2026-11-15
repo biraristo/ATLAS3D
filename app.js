@@ -1222,7 +1222,7 @@ function wireDesktopCamera() {
     else map.jumpTo({ bearing: map.getBearing() + d * 0.2 });
   }, { capture: true, passive: false });
   const c = $('compass'); let st = null;
-  c.addEventListener('pointerdown', e => { st = { x: e.clientX, y: e.clientY, b: map.getBearing(), p: map.getPitch(), drag: false }; c.setPointerCapture(e.pointerId); });
+  c.addEventListener('pointerdown', e => { st = { x: e.clientX, y: e.clientY, b: map.getBearing(), p: map.getPitch(), drag: false }; try { c.setPointerCapture(e.pointerId); } catch {} });
   c.addEventListener('pointermove', e => {
     if (!st) return;
     const dx = e.clientX - st.x, dy = e.clientY - st.y;

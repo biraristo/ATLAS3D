@@ -1183,3 +1183,6 @@ body.navigating.fuel-on .fly-eser{bottom:calc(220px + var(--safe-b))}
 body.navigating.nav-kart .panel{display:flex!important}
 body.navigating.nav-kart .fly-eser{display:none}
 @media (max-width:720px){body.navigating .fly-eser{left:10px;transform:none;width:calc(100vw - 76px)}}
+/* Sürüşte eser kartı açıkken masaüstünde yön kutusu kartın sağına, mobilde kart yön kutusunun altından başlar */
+@media (min-width:721px){body.navigating.nav-kart .nav-head{left:calc(var(--panel-w) + 16px);right:16px}}
+@media (max-width:720px){body.navigating.nav-kart .nav-head{display:none}}

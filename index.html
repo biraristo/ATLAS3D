@@ -80,7 +80,8 @@
     <label class="lp-toggle" id="opt-ocm-row" hidden><input type="checkbox" id="opt-ocm"> <span class="ms">ev_station</span> Şarj istasyonları</label>
     <div class="lp-title">Arazi analizi</div>
     <label class="lp-toggle"><input type="checkbox" id="opt-slope" checked> <span class="ms">trending_up</span> Eğim haritası</label>
-    <div class="slope-legend" id="slope-legend"><span><i style="background:#a3e635"></i>%5–10</span><span><i style="background:#facc15"></i>%10–20</span><span><i style="background:#f97316"></i>%20–35</span><span><i style="background:#dc2626"></i>%35–60</span><span><i style="background:#7e22ce"></i>%60+</span></div>
+    <div class="slope-stil" id="slope-stil" role="group" aria-label="Eğim haritası görünümü"><button data-s="dogal">Doğal</button><button data-s="belirgin">Belirgin</button></div>
+    <div class="slope-legend" id="slope-legend"></div>
     <label class="lp-toggle"><input type="checkbox" id="opt-contours" checked> <span class="ms">terrain</span> Eş yükselti eğrileri</label>
     <label class="lp-range"><span class="ms">height</span> Yükseklik abartma <input type="range" id="opt-exag" min="1" max="3" step="0.1" value="3"><b id="exag-val">3×</b></label>
     </div>

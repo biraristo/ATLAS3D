@@ -1186,3 +1186,8 @@ body.navigating.nav-kart .fly-eser{display:none}
 /* Sürüşte eser kartı açıkken masaüstünde yön kutusu kartın sağına, mobilde kart yön kutusunun altından başlar */
 @media (min-width:721px){body.navigating.nav-kart .nav-head{left:calc(var(--panel-w) + 16px);right:16px}}
 @media (max-width:720px){body.navigating.nav-kart .nav-head{display:none}}
+
+/* Eğim haritası görünümü: doğal / belirgin */
+.slope-stil{display:flex;background:var(--surface-3);border-radius:999px;padding:2px;margin:2px 0 6px 30px;width:max-content}
+.slope-stil button{border:0;background:none;padding:4px 12px;border-radius:999px;font:inherit;font-size:12.5px;color:var(--text-2);cursor:pointer}
+.slope-stil button.on{background:var(--bg);color:var(--blue-d);font-weight:600;box-shadow:0 1px 2px #0002}

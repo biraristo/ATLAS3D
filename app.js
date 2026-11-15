@@ -81,7 +81,7 @@ function applyMapTheme() {
     for (const [k, v] of Object.entries(props)) { try { map.setPaintProperty(id, k, dark ? mapColorValue(k, v) : v); } catch {} }
   }
   try { map.setSky(dark ? DARK_SKY : LIGHT_SKY); } catch {}
-  if (map.getLayer('a3-slope')) map.setPaintProperty('a3-slope', 'raster-opacity', dark ? 0.5 : 0.8); // koyu zeminde eğim renkleri baskın olmasın
+  if (map.getLayer('a3-slope')) map.setPaintProperty('a3-slope', 'raster-opacity', typeof slopeOpak === 'function' ? slopeOpak() : dark ? 0.5 : 0.8); // koyu zeminde eğim renkleri baskın olmasın
   if (isoOn) applyIsoStyle();
   if (typeof eserTemaUygula === 'function') eserTemaUygula();
 }

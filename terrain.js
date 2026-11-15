@@ -4,6 +4,15 @@
 
 /* ================= Eğim haritası (DEM'den tarayıcıda hesaplanır, anahtarsız) ================= */
 const SLOPE_BANDS = [[5, null], [10, [163, 230, 53]], [20, [250, 204, 21]], [35, [249, 115, 22]], [60, [220, 38, 38]], [Infinity, [126, 34, 206]]];
+// "Doğal" görünüm: keskin bantlar yerine toprak tonlarında yumuşak geçiş; düz yer şeffaf, dik yamaç koyulaşır.
+// Renkler arazinin kendi tonlarına yakın (kum → aşı boyası → kiremit → kül moru); gölgelendirme üstte kaldığı için kabartma okunur.
+const SLOPE_DOGAL = [[6, [217, 200, 154], 0], [15, [217, 200, 154], 0.26], [30, [201, 162, 107], 0.38], [50, [168, 115, 90], 0.48], [80, [124, 90, 99], 0.56], [120, [93, 74, 90], 0.62]];
+function slopeDogal(pct) {
+  if (pct <= SLOPE_DOGAL[0][0]) return null;
+  let k = 1; while (k < SLOPE_DOGAL.length - 1 && pct > SLOPE_DOGAL[k][0]) k++;
+  const [p0, c0, a0] = SLOPE_DOGAL[k - 1], [p1, c1, a1] = SLOPE_DOGAL[k], t = Math.max(0, Math.min(1, (pct - p0) / (p1 - p0)));
+  return [c0[0] + (c1[0] - c0[0]) * t, c0[1] + (c1[1] - c0[1]) * t, c0[2] + (c1[2] - c0[2]) * t, (a0 + (a1 - a0) * t) * 255];
+}
 async function encodePng(imgData) {
   if (typeof OffscreenCanvas !== 'undefined') {
     const c = new OffscreenCanvas(256, 256); c.getContext('2d').putImageData(imgData, 0, 0);
@@ -16,7 +25,8 @@ maplibregl.addProtocol('slope', async params => {
   try { return await slopeTile(params); } catch (e) { console.error('slope tile', params.url, e); throw e; }
 });
 async function slopeTile(params) {
-  const [z, x, y] = params.url.replace('slope://', '').split('/').map(Number);
+  const parca = params.url.replace('slope://', '').split('/'), dogal = parca[0] === 'dogal';
+  const [z, x, y] = parca.slice(-3).map(Number);
   const src = await DEM.tile(z, x, y);
   const out = new ImageData(256, 256);
   if (src) {
@@ -31,6 +41,7 @@ async function slopeTile(params) {
       const a = g(xx - k, yy - k), b = g(xx, yy - k), c = g(xx + k, yy - k), dd = g(xx - k, yy), f = g(xx + k, yy), gg = g(xx - k, yy + k), h = g(xx, yy + k), i = g(xx + k, yy + k);
       const dx = ((c + 2 * f + i) - (a + 2 * dd + gg)) / (8 * res * k), dy = ((gg + 2 * h + i) - (a + 2 * b + c)) / (8 * res * k);
       const pct = Math.hypot(dx, dy) * 100;
+      if (dogal) { const c = slopeDogal(pct); if (c) { const o = (yy * 256 + xx) * 4; out.data[o] = c[0]; out.data[o + 1] = c[1]; out.data[o + 2] = c[2]; out.data[o + 3] = c[3]; } continue; }
       const band = SLOPE_BANDS.find(s => pct < s[0])[1];
       if (band) { const o = (yy * 256 + xx) * 4; out.data[o] = band[0]; out.data[o + 1] = band[1]; out.data[o + 2] = band[2]; out.data[o + 3] = pct >= 35 ? 175 : 140; }
     }
@@ -38,12 +49,29 @@ async function slopeTile(params) {
   // PNG'ye kodlayıp yeniden çözmek yerine görüntü doğrudan verilir (karo başına ana iş parçacığında onlarca ms kazanç)
   return { data: typeof createImageBitmap === 'function' ? await createImageBitmap(out) : await encodePng(out) };
 }
+const slopeTiles = () => [`slope://${opts.slopeStil === 'belirgin' ? 'belirgin' : 'dogal'}/{z}/{x}/{y}`];
+// Opaklık: doğalda renk saydamlığı karonun içinde, belirginde katmanla; koyu temada ikisi de hafifler
+const slopeOpak = () => (opts.slopeStil === 'belirgin' ? 0.8 : 1) * (typeof isDark === 'function' && isDark() ? 0.62 : 1);
 function ensureSlopeLayer() {
   if (map.getLayer('a3-slope')) return;
-  map.addSource('a3-slope', { type: 'raster', tiles: ['slope://{z}/{x}/{y}'], tileSize: 256, minzoom: 9, maxzoom: 13 });
-  const before = map.getStyle().layers.find(l => l.type === 'line' && !OWN.has(l.id))?.id;
-  map.addLayer({ id: 'a3-slope', type: 'raster', source: 'a3-slope', minzoom: 9, paint: { 'raster-opacity': typeof isDark === 'function' && isDark() ? 0.5 : 0.8, 'raster-fade-duration': 150 } }, before);
+  map.addSource('a3-slope', { type: 'raster', tiles: slopeTiles(), tileSize: 256, minzoom: 9, maxzoom: 13 });
+  // Gölgelendirmenin altına: kabartma gölgesi renklerin üstünde kalır, yamaçlar düz boya gibi değil arazi gibi görünür
+  const before = map.getLayer('a3-hillshade') ? 'a3-hillshade' : map.getStyle().layers.find(l => l.type === 'line' && !OWN.has(l.id))?.id;
+  map.addLayer({ id: 'a3-slope', type: 'raster', source: 'a3-slope', minzoom: 9, paint: { 'raster-opacity': slopeOpak(), 'raster-fade-duration': 150 } }, before);
   OWN.add('a3-slope');
+}
+function slopeStilCiz() {
+  const dogal = opts.slopeStil !== 'belirgin';
+  $('slope-stil').querySelectorAll('[data-s]').forEach(b => { const on = (b.dataset.s === 'dogal') === dogal; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+  $('slope-legend').innerHTML = dogal
+    ? '<span><i style="background:#e6dabb"></i>%6–15</span><span><i style="background:#cfae80"></i>%15–30</span><span><i style="background:#b58468"></i>%30–50</span><span><i style="background:#8a6670"></i>%50–80</span><span><i style="background:#5d4a5a"></i>%80+</span>'
+    : '<span><i style="background:#a3e635"></i>%5–10</span><span><i style="background:#facc15"></i>%10–20</span><span><i style="background:#f97316"></i>%20–35</span><span><i style="background:#dc2626"></i>%35–60</span><span><i style="background:#7e22ce"></i>%60+</span>';
+}
+function setSlopeStil(s) {
+  opts.slopeStil = s; store.set('opts', opts); slopeStilCiz();
+  if (!map?.getSource('a3-slope')) return;
+  map.getSource('a3-slope').setTiles(slopeTiles());
+  map.setPaintProperty('a3-slope', 'raster-opacity', slopeOpak());
 }
 
 /* ================= Eş yükselti eğrileri (maplibre-contour) ================= */
@@ -80,9 +108,12 @@ function applyTerrainOpts() {
   if (opts.contours) ensureContours().then(() => { ['a3-contour-line', 'a3-contour-label'].forEach(id => map.setLayoutProperty(id, 'visibility', opts.contours ? 'visible' : 'none')); }).catch(() => {});
   else ['a3-contour-line', 'a3-contour-label'].forEach(id => map.getLayer(id) && map.setLayoutProperty(id, 'visibility', 'none'));
   if (opts.terrain) map.setTerrain({ source: 'dem', exaggeration: opts.exag });
-  $('slope-legend').hidden = !opts.slope;
+  $('slope-legend').hidden = !opts.slope; $('slope-stil').hidden = !opts.slope;
 }
+opts.slopeStil ??= 'dogal';
 $('opt-slope').checked = opts.slope; $('opt-contours').checked = opts.contours;
+$('slope-stil').querySelectorAll('[data-s]').forEach(b => { b.onclick = () => setSlopeStil(b.dataset.s); });
+slopeStilCiz();
 $('opt-slope').onchange = e => { opts.slope = e.target.checked; store.set('opts', opts); applyTerrainOpts(); };
 $('opt-contours').onchange = e => { opts.contours = e.target.checked; store.set('opts', opts); applyTerrainOpts(); };
 $('opt-exag').value = opts.exag; $('exag-val').textContent = nf1.format(opts.exag) + '×';

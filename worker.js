@@ -5,7 +5,8 @@
 //   /api/lookup        Nominatim (OSM nesne detayı: telefon, web, saatler)
 //   /api/route         OSRM (araç / yürüyüş / bisiklet rota)
 //   /api/trip          OSRM trip: en çok 12 durağı en kısa sıraya dizer (günlük eser rotası)
-//   /api/nearby        Nominatim (harita alanında kategori araması)
+//   /api/nearby        Overpass (OSM etiketleriyle kategori araması; saat, telefon, web dahil), olmazsa Nominatim
+//   /api/match         Valhalla (FOSSGIS): kaydedilen GPS izini yollara oturtur, geçilen sokakların adlarını verir
 //   /api/fuel          EPDK günlük akaryakıt ve LPG bayi satış fiyatı bülteni (Türkiye ortalaması)
 //   /api/traffic/*     TomTom (TOMTOM_API_KEY varsa): trafik karoları, trafikli rota, ulaşılabilir alan
 //   /api/weather       Open-Meteo: rota boyunca sıcaklık ve rüzgâr (yakıt hesabı)
@@ -142,6 +143,8 @@ const routes = {
     const q = clean(p.get('q')); const bb = (p.get('bbox') || '').split(',').map(v => num(v, 3));
     if (!q || bb.length !== 4 || bb.some(v => v === null)) return json([], 400);
     const [w, s, e, n] = bb;
+    const ov = OVERPASS_Q[q] ? await overpassNearby(q, bb, ctx).catch(() => null) : null;
+    if (ov) return ov;
     return cachedFetch(`${NOMINATIM}/search?format=jsonv2&limit=40&bounded=1&addressdetails=1&extratags=1&accept-language=tr&viewbox=${w},${n},${e},${s}&q=` + encodeURIComponent(q), 86400, ctx, origin);
   },
   // Araç görseli: Wikipedia'nın sayfa görseli (yalnız özgür lisanslı Wikimedia Commons dosyaları). 30 gün önbellek.
@@ -196,6 +199,114 @@ const routes = {
   }
 };
 
+
+/* ================= Yakındakiler: Overpass =================
+   Nominatim kategori aramada metin eşleştirdiği için az ve eksik sonuç verir. Overpass doğrudan OSM etiketlerini sorar:
+   alandaki tüm restoranlar, açılış saatleri, telefon, web sitesi. Yanıt Nominatim biçimine çevrilir (arayüz aynı kalır). */
+const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
+const OVERPASS_Q = {
+  restaurant: ['["amenity"~"^(restaurant|fast_food|food_court)$"]'],
+  hotel: ['["tourism"~"^(hotel|motel|guest_house|hostel|apartment)$"]'],
+  cafe: ['["amenity"~"^(cafe|ice_cream)$"]'],
+  fuel: ['["amenity"="fuel"]'],
+  supermarket: ['["shop"~"^(supermarket|convenience|greengrocer|butcher|bakery)$"]'],
+  pharmacy: ['["amenity"="pharmacy"]'],
+  hospital: ['["amenity"~"^(hospital|clinic)$"]'],
+  atm: ['["amenity"="atm"]', '["amenity"="bank"]'],
+  parking: ['["amenity"="parking"]["access"!~"^(private|no)$"]'],
+  mosque: ['["amenity"="place_of_worship"]["religion"="muslim"]'],
+  'tourist attraction': ['["tourism"~"^(attraction|museum|viewpoint|gallery)$"]', '["historic"~"^(castle|monument|ruins|archaeological_site|memorial)$"]["name"]'],
+  'charging station': ['["amenity"="charging_station"]']
+};
+const OV_KEYS = ['amenity', 'shop', 'tourism', 'historic', 'leisure'];
+async function overpassNearby(q, bb, ctx) {
+  const [w, s, e, n] = bb;
+  const cacheKey = new Request(`https://atlas3d.cache/ov/v1/${encodeURIComponent(q)}/${bb.join(',')}`);
+  const hit = await caches.default.match(cacheKey); if (hit) return hit;
+  const body = `[out:json][timeout:12];(${OVERPASS_Q[q].map(f => `nwr${f}(${s},${w},${n},${e});`).join('')});out center tags 120;`;
+  let d = null;
+  for (const u of OVERPASS) {
+    try {
+      const r = await fetch(u, { method: 'POST', headers: { 'User-Agent': UA, 'content-type': 'application/x-www-form-urlencoded' }, body: 'data=' + encodeURIComponent(body), signal: AbortSignal.timeout(14000) });
+      if (r.ok) { d = await r.json(); break; }
+    } catch {}
+  }
+  if (!d?.elements) return null;
+  const out = d.elements.map(el => {
+    const t = el.tags || {}, lat = el.lat ?? el.center?.lat, lon = el.lon ?? el.center?.lon;
+    const key = OV_KEYS.find(k => t[k]) || 'amenity';
+    const name = t['name:tr'] || t.name || t.brand || t.operator || '';
+    return { lat: String(lat), lon: String(lon), name, category: key, type: t[key] || 'yes', osm_type: el.type, osm_id: el.id, extratags: t, display_name: name,
+      address: { road: t['addr:street'] || '', house_number: t['addr:housenumber'] || '', suburb: t['addr:neighbourhood'] || t['addr:suburb'] || '', town: t['addr:district'] || '', province: t['addr:city'] || t['addr:province'] || '' } };
+  }).filter(x => Number.isFinite(+x.lat) && Number.isFinite(+x.lon))
+    .map(x => ({ x, d: Math.hypot((+x.lon - (w + e) / 2) * Math.cos((s + n) / 2 * Math.PI / 180), +x.lat - (s + n) / 2) + (x.name ? 0 : 1) })) // merkeze yakın ve adlı olanlar önce
+    .sort((a, b) => a.d - b.d).slice(0, 80).map(o => o.x);
+  if (!out.length) return null; // boşsa Nominatim'e de bak
+  const res = new Response(JSON.stringify(out), { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=21600', 'x-source': 'overpass' } });
+  ctx.waitUntil(caches.default.put(cacheKey, res.clone()));
+  return res;
+}
+
+/* ================= Yolculuk kaydını yollara oturtma: Valhalla (FOSSGIS, anahtarsız) =================
+   POST /api/match { mode: car|bike|foot, pts: [[lon, lat, unixSn], ...] }
+   İz 350 noktalık parçalar halinde trace_attributes'a gönderilir (sunucuyu yormamak için sırayla).
+   Yanıt: line (yola oturmuş çizgi), yollar [{ ad, m }] (sırayla geçilen sokaklar), nok [[lon, lat, yolNo] | null] (her GPS noktasının yoldaki yeri) */
+const VALHALLA = 'https://valhalla1.openstreetmap.de/trace_attributes';
+const COSTING = { car: 'auto', bike: 'bicycle', foot: 'pedestrian' };
+function decode6(str) {
+  const out = []; let i = 0, lat = 0, lon = 0;
+  const next = () => { let r = 0, sh = 0, b; do { b = str.charCodeAt(i++) - 63; r |= (b & 31) << sh; sh += 5; } while (b >= 32); return r & 1 ? ~(r >> 1) : r >> 1; };
+  while (i < str.length) { lat += next(); lon += next(); out.push([lon / 1e6, lat / 1e6]); }
+  return out;
+}
+async function matchTrace(request, ctx) {
+  const body = await request.json().catch(() => null);
+  const costing = COSTING[body?.mode] || 'auto';
+  const pts = Array.isArray(body?.pts) ? body.pts.filter(p => Array.isArray(p) && p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]) && Math.abs(p[0]) <= 180 && Math.abs(p[1]) <= 90) : [];
+  if (pts.length < 2 || pts.length > 6000) return json({ error: 'pts' }, 400);
+  const sig = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(costing + pts.map(p => p[0].toFixed(5) + ',' + p[1].toFixed(5)).join(';')));
+  const cacheKey = new Request('https://atlas3d.cache/match/v1/' + [...new Uint8Array(sig)].map(b => b.toString(16).padStart(2, '0')).join(''));
+  const hit = await caches.default.match(cacheKey); if (hit) return hit;
+
+  const N = 350, line = [], yollar = [], nok = new Array(pts.length).fill(null);
+  let sonAd = null, eslesen = 0;
+  for (let a = 0; a < pts.length - 1; a += N - 1) {
+    const parca = pts.slice(a, a + N);
+    if (parca.length < 2) break;
+    const zamanli = parca.every(p => Number.isFinite(p[2]));
+    const req = {
+      shape: parca.map(p => ({ lon: p[0], lat: p[1], ...(zamanli ? { time: Math.round(p[2]) } : {}) })),
+      costing, shape_match: 'map_snap', ...(zamanli ? { use_timestamps: true } : {}),
+      trace_options: { search_radius: 60, gps_accuracy: 20, breakage_distance: 2000 },
+      filters: { attributes: ['edge.names', 'edge.length', 'edge.road_class', 'edge.begin_shape_index', 'edge.end_shape_index', 'shape', 'matched.point', 'matched.type', 'matched.edge_index'], action: 'include' }
+    };
+    const r = await fetch(VALHALLA, { method: 'POST', headers: { 'User-Agent': UA, 'content-type': 'application/json' }, body: JSON.stringify(req), signal: AbortSignal.timeout(20000) });
+    if (!r.ok) {
+      if (r.status === 429) return json({ error: 'busy' }, 503);
+      continue; // eşleşmeyen parça (ör. yol dışı yürüyüş): ham iz kalır
+    }
+    const d = await r.json(), shape = d.shape ? decode6(d.shape) : [], edges = d.edges || [];
+    // Sokaklar: art arda aynı addaki kenarlar birleşir; isimsiz kenarlar bir önceki sokağa yazılmaz
+    const kenarYol = edges.map(e => {
+      const ad = (e.names || [])[0] || null, m = (e.length || 0) * 1000;
+      if (!ad) { sonAd = null; return -1; }
+      if (ad === sonAd && yollar.length) { yollar[yollar.length - 1].m += m; return yollar.length - 1; }
+      sonAd = ad; yollar.push({ ad, m, sinif: e.road_class || '' }); return yollar.length - 1;
+    });
+    line.push(...(line.length ? shape.slice(1) : shape));
+    (d.matched_points || []).forEach((m, k) => {
+      if (m.type === 'unmatched' || !Number.isFinite(m.lat)) return;
+      const i = a + k; if (nok[i] && k === 0) return; // parça başı bir önceki parçanın sonuyla aynı nokta
+      nok[i] = [+m.lon.toFixed(6), +m.lat.toFixed(6), Number.isInteger(m.edge_index) ? (kenarYol[m.edge_index] ?? -1) : -1];
+      eslesen++;
+    });
+  }
+  if (!line.length) return json({ error: 'nomatch' }, 422);
+  const out = { line: line.map(c => [+c[0].toFixed(6), +c[1].toFixed(6)]), yollar: yollar.map(y => ({ ...y, m: Math.round(y.m) })), nok, oran: +(eslesen / pts.length).toFixed(2), kaynak: 'Valhalla · OpenStreetMap' };
+  const res = new Response(JSON.stringify(out), { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=2592000' } });
+  ctx.waitUntil(caches.default.put(cacheKey, res.clone()));
+  return res;
+}
 
 // Yazarken öneri: Photon (mekanlar, OSM) + Mapbox (adres, sokak, kapı numarası) birlikte
 const MB_TYPE = { address: 'house', street: 'street', neighborhood: 'suburb', locality: 'suburb', place: 'city', district: 'county', region: 'state', postcode: 'postcode', country: 'country' };
@@ -551,6 +662,7 @@ export default {
       try { return await traffic(request, url, env, ctx); }
       catch (e) { return json({ error: String(e.message || e) }, 502); }
     }
+    if (url.pathname === '/api/match' && request.method === 'POST') { try { return await matchTrace(request, ctx); } catch (e) { return json({ error: String(e.message || e) }, 502); } }
     if (url.pathname.startsWith('/api/mly/')) { try { return await mapillary(url, env, ctx); } catch (e) { return json({ error: String(e.message || e) }, 502); } }
     if (url.pathname === '/api/ocm') { try { return await chargeMap(url.searchParams, env, ctx); } catch (e) { return json({ error: String(e.message || e) }, 502); } }
     if (url.pathname.startsWith('/api/mt/')) { try { return await mapTiler(url, env, ctx); } catch (e) { return json({ error: String(e.message || e) }, 502); } }

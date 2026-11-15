@@ -3,6 +3,8 @@
 // - Noktalar IndexedDB'de (atlas3d-kayit) saklanır, kayıt sırasında da sürekli yazılır: uygulama kapansa da iz kaybolmaz
 // - Ekran kilidini önlemek için Wake Lock istenir (telefonlarda ekran kapanınca tarayıcı konumu durdurabilir)
 // - Analiz: rota analizi ekranı (analysis.js) kayıt kipinde açılır; yükseklikler arazi modelinden
+// - Yola oturtma: kayıt bitince iz /api/match (Valhalla, OpenStreetMap) ile yollara eşleştirilir; haritada yolu izleyen çizgi,
+//   ayrıntıda geçilen sokaklar, oynatmada o anki sokak adı gösterilir. Eşleşme kayda yazılır (y.es), bir kez yapılır.
 'use strict';
 
 const kyt = { kayit: null, izleme: null, kilit: null, saat: null, oynat: null };
@@ -43,16 +45,94 @@ const kytTarih = t => new Date(t).toLocaleDateString('tr-TR', { day: 'numeric', 
 const kytSure = s => { s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), sn = s % 60; return h ? `${h}:${String(m).padStart(2, '0')}:${String(sn).padStart(2, '0')}` : `${m}:${String(sn).padStart(2, '0')}`; };
 
 /* ----- Haritadaki iz ----- */
-function kytIzCiz(pts, kaynak = 'kyt-iz') {
-  const veri = { type: 'Feature', geometry: { type: 'LineString', coordinates: pts.map(p => [p[1], p[2]]) } };
-  if (map.getSource(kaynak)) { map.getSource(kaynak).setData(veri); return; }
+function kytIzCiz(pts, kaynak = 'kyt-iz', yolCizgi = null) {
+  const ham = pts.map(p => [p[1], p[2]]);
+  const veri = { type: 'Feature', geometry: { type: 'LineString', coordinates: yolCizgi || ham } };
+  // Yola oturtulmuş izde ham GPS izi altta ince ve soluk kalır: eşleşmenin neyi düzelttiği görülür
+  const hamVeri = { type: 'Feature', geometry: { type: 'LineString', coordinates: yolCizgi ? ham : [] } };
+  if (map.getSource(kaynak)) { map.getSource(kaynak).setData(veri); map.getSource(kaynak + '-ham')?.setData(hamVeri); return; }
+  map.addSource(kaynak + '-ham', { type: 'geojson', data: hamVeri });
+  map.addLayer({ id: kaynak + '-ham', type: 'line', source: kaynak + '-ham', layout: { 'line-join': 'round' }, paint: { 'line-color': '#5f6368', 'line-width': 1.5, 'line-opacity': 0.55, 'line-dasharray': [2, 2] } });
+  OWN.add(kaynak + '-ham');
   map.addSource(kaynak, { type: 'geojson', data: veri });
   const renk = kaynak === 'kyt-iz' ? '#d93025' : '#7a3db8';
   map.addLayer({ id: kaynak + '-hale', type: 'line', source: kaynak, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#fff', 'line-width': 7, 'line-opacity': 0.9 } });
   map.addLayer({ id: kaynak, type: 'line', source: kaynak, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': renk, 'line-width': 4 } });
   OWN.add(kaynak); OWN.add(kaynak + '-hale');
 }
-function kytIzSil(kaynak) { [kaynak, kaynak + '-hale'].forEach(id => map.getLayer(id) && map.removeLayer(id)); map.getSource(kaynak) && map.removeSource(kaynak); }
+function kytIzSil(kaynak) {
+  [kaynak, kaynak + '-hale', kaynak + '-ham'].forEach(id => map.getLayer(id) && map.removeLayer(id));
+  [kaynak, kaynak + '-ham'].forEach(id => map.getSource(id) && map.removeSource(id));
+}
+
+/* ----- Yollara oturtma (Valhalla) ----- */
+const KYT_ES_MAKS = 5500; // istek başına en çok nokta; uzun kayıtlarda eşit aralıklı örneklenir
+async function kytEsle(y) {
+  if (y.es || y.esYok || y.acik || y.pts.length < 3) return y.es || null;
+  if (kytEsle.sur?.[y.id]) return kytEsle.sur[y.id];
+  const is = (async () => {
+    const adim = Math.ceil(y.pts.length / KYT_ES_MAKS), idx = [];
+    for (let i = 0; i < y.pts.length; i += adim) idx.push(i);
+    if (idx[idx.length - 1] !== y.pts.length - 1) idx.push(y.pts.length - 1);
+    try {
+      const r = await fetch('/api/match', { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mode: y.mod || 'car', pts: idx.map(i => [y.pts[i][1], y.pts[i][2], Math.round(y.pts[i][0] / 1000)]) }) });
+      if (r.status === 422) { y.esYok = true; await kytYaz(y); return null; } // yol dışı (arazi yürüyüşü vb.)
+      if (!r.ok) return null; // geçici hata: sonra yeniden denenir
+      const d = await r.json(); if (!d.line?.length) return null;
+      const nok = new Array(y.pts.length).fill(null); idx.forEach((i, k) => { nok[i] = d.nok?.[k] || null; });
+      let mesafe = 0; for (let i = 1; i < d.line.length; i++) mesafe += haversine(d.line[i - 1], d.line[i]);
+      y.es = { line: d.line, yollar: d.yollar || [], nok, oran: d.oran ?? 0, mesafe, at: Date.now() };
+      await kytYaz(y);
+      return y.es;
+    } catch { return null; }
+  })();
+  (kytEsle.sur ??= {})[y.id] = is;
+  try { return await is; } finally { delete kytEsle.sur[y.id]; }
+}
+// Oynatma için: her GPS noktasının yola oturmuş çizgi üzerindeki konumu (metre); yoldan uzak noktalar -1 (ham iz kullanılır)
+function kytYolHazirla(y) {
+  const L = y.es?.line; if (!L || L.length < 2) return null;
+  const lc = [0]; for (let k = 1; k < L.length; k++) lc.push(lc[k - 1] + haversine(L[k - 1], L[k]));
+  const kx = Math.cos(L[0][1] * Math.PI / 180) * 111320, ky = 110540;
+  const yer = new Float64Array(y.pts.length).fill(-1);
+  let s0 = 0, onceki = 0;
+  const ara = (P, bas, son) => {
+    let enIyi = Infinity, m = -1, sb = bas;
+    for (let s = bas; s < son; s++) {
+      const A = L[s], B = L[s + 1], ax = (B[0] - A[0]) * kx, ay = (B[1] - A[1]) * ky, px = (P[0] - A[0]) * kx, py = (P[1] - A[1]) * ky;
+      const uz = ax * ax + ay * ay, t = uz ? Math.max(0, Math.min(1, (px * ax + py * ay) / uz)) : 0;
+      const d = Math.hypot(px - ax * t, py - ay * t);
+      if (d < enIyi) { enIyi = d; m = lc[s] + t * (lc[s + 1] - lc[s]); sb = s; }
+    }
+    return { enIyi, m, sb };
+  };
+  for (let i = 0; i < y.pts.length; i++) {
+    const P = y.es.nok?.[i] ? [y.es.nok[i][0], y.es.nok[i][1]] : [y.pts[i][1], y.pts[i][2]];
+    let b = ara(P, s0, Math.min(L.length - 1, s0 + 600));
+    if (b.enIyi > 60) b = ara(P, s0, L.length - 1); // uzun GPS boşluğu: çizginin kalanında ara
+    if (b.enIyi <= 60) { yer[i] = Math.max(onceki, b.m); onceki = yer[i]; s0 = b.sb; }
+  }
+  // Her noktada o an bulunulan sokağın adı (eşleşmeyen noktada bir öncekinin adı sürer)
+  const adlar = new Array(y.pts.length).fill(''); let son = '';
+  for (let i = 0; i < y.pts.length; i++) { const k = y.es.nok?.[i]?.[2]; if (k >= 0 && y.es.yollar[k]) son = y.es.yollar[k].ad; adlar[i] = son; }
+  return { L, lc, yer, adlar };
+}
+function kytCizgideNokta(yol, m) {
+  const { L, lc } = yol; let lo = 0, hi = lc.length - 1;
+  while (lo < hi) { const md = (lo + hi) >> 1; if (lc[md] < m) lo = md + 1; else hi = md; }
+  const s = Math.max(0, lo - 1), uz = lc[s + 1] - lc[s] || 1, f = Math.max(0, Math.min(1, (m - lc[s]) / uz));
+  return { s, ll: [L[s][0] + (L[s + 1][0] - L[s][0]) * f, L[s][1] + (L[s + 1][1] - L[s][1]) * f] };
+}
+// Geçilen yollar: sırayla, kısa parçalar (kavşak geçişleri) elenir; aynı ad art arda gelirse birleşir
+function kytYolListesi(es) {
+  const L = [];
+  for (const y of es?.yollar || []) {
+    if (y.m < 40) continue;
+    if (L.length && L[L.length - 1].ad === y.ad) L[L.length - 1].m += y.m; else L.push({ ...y });
+  }
+  return L;
+}
 
 /* ----- Kayıt ----- */
 async function kytBasla() {
@@ -100,6 +180,7 @@ async function kytBitir(sessiz) {
     if (yer) { k.yer = yer; await kytYaz(k); }
   }).catch(() => {});
   if (!sessiz) { toast(`Yolculuk kaydedildi: ${fmtDist(k.mesafe)}, ${fmtDur(k.sure)}`, 3500); kytDetay(k.id); }
+  else kytEsle(k);
 }
 // Uygulama kayıt sürerken kapandıysa: yarım kayıt açılışta toparlanır
 kytDbAc().then(() => kytHepsi()).then(L => L.filter(y => y.acik).forEach(async y => {
@@ -141,12 +222,23 @@ async function kytListe() {
 }
 async function kytDetay(id) {
   const y = await kytOku(id); if (!y) return;
-  kytIzCiz(y.pts, 'kyt-gecmis');
+  kytIzCiz(y.pts, 'kyt-gecmis', y.es?.line);
   const b = new maplibregl.LngLatBounds(); y.pts.forEach(p => b.extend([p[1], p[2]]));
+  let tumu = false;
+  const yolBolumu = () => {
+    if (!y.es) return y.esYok === 'gecici' ? '<div class="kyt-yol-not">Yol eşleştirme servisine şu an ulaşılamadı; yolculuğu yeniden açınca tekrar denenir.</div>'
+      : y.esYok ? '<div class="kyt-yol-not">Bu iz yollara oturtulamadı (yol dışı ya da arazi yürüyüşü olabilir).</div>'
+      : '<div class="kyt-yol-not"><span class="spinner kucuk"></span> Yollara oturtuluyor…</div>';
+    const L = kytYolListesi(y.es); if (!L.length) return '';
+    const goster = tumu ? L : L.slice(0, 12);
+    return `<div class="kyt-yollar"><h3>Geçilen yollar <small>${L.length} yol · OpenStreetMap</small></h3>
+      <ol>${goster.map(r => `<li><span>${esc(r.ad)}</span><b>${fmtDist(r.m)}</b></li>`).join('')}</ol>
+      ${L.length > goster.length ? `<button class="text-btn" id="kyt-yol-tum">Tümünü göster (${L.length})</button>` : ''}</div>`;
+  };
   const sat = (ic, l, v) => `<div class="kyt-o"><span class="ms">${ic}</span><small>${l}</small><b>${v}</b></div>`;
   const render = el => {
     el.innerHTML = `<div class="place-head drag-zone"><h1 class="eser-ad">${esc(y.yer || 'Yolculuk')}</h1><div class="sub">${kytTarih(y.bas)} · ${kytSaat(y.bas)}–${kytSaat(y.son)} · ${MODES[y.mod]?.label || ''}</div></div>
-      <div class="kyt-ozet">${sat('straighten', 'Mesafe', fmtDist(y.mesafe))}${sat('schedule', 'Süre', fmtDur(y.sure))}${sat('speed', 'Ort. hız', nf1.format(y.ort) + ' km/sa')}${sat('bolt', 'En yüksek', nf0.format(y.maks) + ' km/sa')}</div>
+      <div class="kyt-ozet">${sat('straighten', 'Mesafe', fmtDist(y.es && y.es.oran >= 0.6 ? y.es.mesafe : y.mesafe))}${sat('schedule', 'Süre', fmtDur(y.sure))}${sat('speed', 'Ort. hız', nf1.format(y.ort) + ' km/sa')}${sat('bolt', 'En yüksek', nf0.format(y.maks) + ' km/sa')}</div>
       <div class="kyt-eylem">
         <button class="g-rota-btn" id="kyt-oynat"><span class="ms">play_arrow</span>Haritada oynat</button>
         <button class="g-rota-btn ikincil" id="kyt-analiz"><span class="ms">insights</span>Yolculuk analizi</button>
@@ -155,7 +247,9 @@ async function kytDetay(id) {
         <button class="text-btn" id="kyt-ad"><span class="ms">edit</span> Adını değiştir</button>
         <button class="text-btn" id="kyt-gpx"><span class="ms">download</span> GPX</button>
         <button class="text-btn kyt-sil" id="kyt-sil"><span class="ms">delete</span> Sil</button>
-      </div>`;
+      </div>${yolBolumu()}`;
+    render.el = el;
+    if ($('kyt-yol-tum')) $('kyt-yol-tum').onclick = () => { tumu = true; render(el); };
     $('kyt-oynat').onclick = () => kytOynat(y.id);
     $('kyt-analiz').onclick = () => kytAnaliz(y);
     $('kyt-gpx').onclick = async () => { const r = await kytRota(y); if (r) exportGpx(r); };
@@ -165,6 +259,10 @@ async function kytDetay(id) {
   render.mode = 'list';
   openPanel(render, { mode: 'list', sheet: 'peek', push: panelMode === 'list' });
   map.fitBounds(b, { padding: mapPadding(), pitch: 0, maxZoom: 16, duration: 1000 });
+  if (!y.es && !y.esYok) kytEsle(y).then(es => {
+    if (es) kytIzCiz(y.pts, 'kyt-gecmis', es.line); else if (!y.esYok) y.esYok = 'gecici';
+    if (render.el?.isConnected) render(render.el);
+  });
 }
 // Analiz için rota biçimi: koordinat, kümülatif mesafe, zaman; yükseklik profili arazi modelinden
 async function kytRota(y) {
@@ -188,9 +286,10 @@ async function kytOynat(id) {
   const y = await kytOku(id); if (!y) return;
   kytOynatDur();
   closePanel();
-  kytIzCiz(y.pts, 'kyt-gecmis');
+  if (!y.es && !y.esYok) await kytEsle(y);
+  kytIzCiz(y.pts, 'kyt-gecmis', y.es?.line);
   const cum = [0]; for (let i = 1; i < y.pts.length; i++) cum.push(cum[i - 1] + haversine([y.pts[i - 1][1], y.pts[i - 1][2]], [y.pts[i][1], y.pts[i][2]]));
-  const o = kyt.oynat = { y, cum, t: y.pts[0][0], hiz: store.get('kyt_hiz', 60), durdu: false, son: performance.now(), takip: true, raf: 0 };
+  const o = kyt.oynat = { y, cum, yol: kytYolHazirla(y), t: y.pts[0][0], hiz: store.get('kyt_hiz', 60), durdu: false, son: performance.now(), takip: true, raf: 0 };
   if (!map.getSource('kyt-gecen')) {
     map.addSource('kyt-gecen', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     map.addLayer({ id: 'kyt-gecen', type: 'line', source: 'kyt-gecen', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#3b0f6b', 'line-width': 5 } });
@@ -207,9 +306,15 @@ async function kytOynat(id) {
 function kytKonumAt(o, t) {
   const p = o.y.pts; let i = 1; while (i < p.length - 1 && p[i][0] < t) i++;
   const a = p[i - 1], b = p[i], f = b[0] > a[0] ? Math.max(0, Math.min(1, (t - a[0]) / (b[0] - a[0]))) : 1;
+  const dt = (b[0] - a[0]) / 1000, d = haversine([a[1], a[2]], [b[1], b[2]]), hiz = dt > 0 ? d / dt * 3.6 : 0;
+  const Y = o.yol, ad = Y?.adlar[i - 1] || '';
+  // Yola oturmuş izde konum çizgi boyunca ilerler (köşeleri kesmez, binaların içinden geçmez)
+  if (Y && Y.yer[i - 1] >= 0 && Y.yer[i] >= 0) {
+    const m = Y.yer[i - 1] + (Y.yer[i] - Y.yer[i - 1]) * f, n = kytCizgideNokta(Y, m);
+    return { i, ll: n.ll, gecen: [...Y.L.slice(0, n.s + 1), n.ll], mesafe: m, hiz, ad };
+  }
   const ll = [a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
-  const dt = (b[0] - a[0]) / 1000, d = haversine([a[1], a[2]], [b[1], b[2]]);
-  return { i, ll, mesafe: o.cum[i - 1] + d * f, hiz: dt > 0 ? d / dt * 3.6 : 0 };
+  return { i, ll, mesafe: o.cum[i - 1] + d * f, hiz, ad };
 }
 function kytKare(simdi = performance.now()) {
   const o = kyt.oynat; if (!o) return;
@@ -217,7 +322,7 @@ function kytKare(simdi = performance.now()) {
   o.son = simdi;
   const k = kytKonumAt(o, o.t), p = o.y.pts;
   map.getSource('kyt-ben').setData({ type: 'Feature', geometry: { type: 'Point', coordinates: k.ll } });
-  map.getSource('kyt-gecen').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: [...p.slice(0, k.i).map(q => [q[1], q[2]]), k.ll] } });
+  map.getSource('kyt-gecen').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: k.gecen || [...p.slice(0, k.i).map(q => [q[1], q[2]]), k.ll] } });
   if (o.takip && !o.durdu) {
     const s = map.project(k.ll), c = map.getContainer();
     if (s.x < 50 || s.y < 130 || s.x > c.clientWidth - 50 || s.y > c.clientHeight - 240) map.easeTo({ center: k.ll, duration: 500 });
@@ -247,7 +352,7 @@ function kytOynaticiCiz() {
 function kytOynaticiGuncelle(k) {
   const o = kyt.oynat;
   $('ko-saat').textContent = kytSaatSn(o.t);
-  $('ko-bilgi').textContent = `${fmtDist(k.mesafe)} · ${nf0.format(k.hiz)} km/sa${o.y.pts[k.i]?.[3] != null ? ` · ${nf0.format(o.y.pts[k.i][3])} m` : ''}`;
+  $('ko-bilgi').textContent = `${k.ad ? k.ad + ' · ' : ''}${fmtDist(k.mesafe)} · ${nf0.format(k.hiz)} km/sa${o.y.pts[k.i]?.[3] != null ? ` · ${nf0.format(o.y.pts[k.i][3])} m` : ''}`;
   const s = $('ko-kay'); if (document.activeElement !== s) s.value = o.t;
   const b = $('ko-oynat'), ms = b.querySelector('.ms'), ikon = o.durdu ? 'play_arrow' : 'pause';
   if (ms.textContent !== ikon) { ms.textContent = ikon; b.classList.toggle('on', !o.durdu); b.setAttribute('aria-label', o.durdu ? 'Oynat' : 'Duraklat'); }

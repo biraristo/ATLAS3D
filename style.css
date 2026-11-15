@@ -1140,3 +1140,14 @@ body.kyt-kayit .hud{right:200px!important}
 .ek-btns{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
 .ek-btns a,.ek-btns button{flex:1;min-width:130px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 12px;border-radius:999px;border:1px solid var(--line,#0002);background:none;color:inherit;font:inherit;font-size:13.5px;text-decoration:none;cursor:pointer}
 .ek-btns .pri{background:var(--blue,#1a73e8);border-color:transparent;color:#fff}
+/* Kayıt: geçilen yollar */
+.kyt-yollar{padding:14px 20px 4px}
+.kyt-yollar h3{font-size:14px;font-weight:600;margin:0 0 6px;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.kyt-yollar h3 small{font-weight:400;color:var(--muted);font-size:12px}
+.kyt-yollar ol{list-style:none;margin:0;padding:0;counter-reset:y}
+.kyt-yollar li{counter-increment:y;display:flex;align-items:baseline;gap:10px;padding:6px 0;border-bottom:1px solid var(--line-2,#eee);font-size:13.5px}
+.kyt-yollar li::before{content:counter(y);flex:0 0 20px;height:20px;border-radius:50%;background:#efe7f8;color:#7a3db8;font-size:11px;display:inline-flex;align-items:center;justify-content:center}
+.kyt-yollar li span{flex:1;min-width:0}
+.kyt-yollar li b{font-weight:500;color:var(--muted);white-space:nowrap}
+.kyt-yol-not{padding:14px 20px 0;font-size:13px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.spinner.kucuk{width:14px;height:14px;border-width:2px;margin:0}
